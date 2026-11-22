@@ -51,7 +51,7 @@
     { "type": "row", "title": "Messaging", "gridPos": { "x": 0, "y": 15, "w": 24, "h": 1 } },
     {
       "type": "timeseries", "title": "Outbox: pending vs published/min",
-      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+      "gridPos": { "x": 0, "y": 16, "w": 8, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         { "refId": "A", "expr": "savings_outbox_pending", "legendFormat": "pending" },
@@ -60,9 +60,16 @@
     },
     {
       "type": "timeseries", "title": "Consumer lag (payment instructions)",
-      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+      "gridPos": { "x": 8, "y": 16, "w": 8, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [{ "refId": "A", "expr": "max(kafka_consumer_fetch_manager_records_lag_max)", "legendFormat": "max lag" }]
+    },
+    {
+      "type": "stat", "title": "Dead-lettered instructions (24h)",
+      "gridPos": { "x": 16, "y": 16, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } } },
+      "targets": [{ "refId": "A", "expr": "sum(increase(savings_messages_dead_lettered_total[24h])) or vector(0)" }]
     },
     { "type": "row", "title": "Service", "gridPos": { "x": 0, "y": 24, "w": 24, "h": 1 } },
     {

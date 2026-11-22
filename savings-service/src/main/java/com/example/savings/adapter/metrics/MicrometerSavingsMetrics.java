@@ -14,6 +14,9 @@ class MicrometerSavingsMetrics implements SavingsMetrics {
 
     MicrometerSavingsMetrics(MeterRegistry registry) {
         this.registry = registry;
+        // Alerted on with increase(): the series must exist at 0 before the first event, or Prometheus
+        // never sees the step from "absent" to 1 and the first overdrawn account goes unnoticed.
+        registry.counter("savings.negative.balance");
     }
 
     @Override

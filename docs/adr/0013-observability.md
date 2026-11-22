@@ -20,15 +20,19 @@ overdrawn accounts.
 | `savings_withdrawals_total{outcome}` | counter | reserved / rejected / settled / released / expired |
 | `savings_interest_paid_euros_total` | counter | Interest credited |
 | `savings_negative_balance_total` | counter | Late confirmations that overdrew an account |
-| `savings_messages_duplicate_total` | counter | Redeliveries skipped by the idempotent consumer |
+| `savings_messages_duplicate_total` | counter | Redeliveries and re-sent payments skipped by the idempotent consumer |
+| `savings_messages_dead_lettered_total{topic}` | counter | Instructions parked on the dead-letter topic |
 | `savings_outbox_pending` | gauge | Events committed but not yet in Kafka |
 | `savings_outbox_published_total` | counter | Relay throughput |
 | `kafka_consumer_fetch_manager_records_lag_max` | gauge | Consumer lag (Kafka client metric) |
 
 - docker-compose runs Prometheus with alert rules (`ops/prometheus/alerts.yml`) and Grafana with a
   provisioned dashboard (`ops/grafana/dashboards/savings.json`).
-- Alerts: **SavingsAccountOverdrawn** (page), **SavingsOutboxBacklog** (page),
-  **SavingsConsumerLag** (warn).
+- Alerts: **SavingsAccountOverdrawn** (page), **SavingsInstructionDeadLettered** (page),
+  **SavingsOutboxBacklog** (page), **SavingsConsumerLag** (warn).
+- Counters behind an `increase()` alert are registered at start-up with value 0. Micrometer creates
+  a counter on first use, and Prometheus can't compute an increase for a series that jumps from
+  absent to 1, so the first overdrawn account or dead letter would never alert.
 - Metric amounts are doubles. Fine for dashboards, never used for bookkeeping.
 
 ## Consequences
@@ -36,4 +40,5 @@ overdrawn accounts.
 - Prometheus 3 negotiates a text format the actuator rejects (HTTP 406); the scrape config pins
   `scrape_protocols`.
 - Next steps: tracing (OpenTelemetry, with the `event_id` as span attribute across Kafka hops),
-  a DLT-traffic alert, and Alertmanager routing.
+  Alertmanager routing, and alerts on reduced redundancy (broker replicas, database failover quorum),
+  not only on failure.

@@ -30,6 +30,31 @@ Feature: Deposits arrive from Payments via Kafka
     When method get
     Then match response.balance == '101.00'
 
+  Scenario: the same payment re-sent as a new message is credited only once
+    * def paymentId = 'pay-' + hooks.uuid()
+    * hooks.depositPayment(accountId, paymentId, '100.00')
+    * hooks.depositPayment(accountId, paymentId, '100.00')
+    * hooks.deposit(accountId, '1.00')
+    * def first = hooks.awaitEvent(accountId, 'MONEY_DEPOSITED')
+    * match first.paymentId == paymentId
+    * def second = hooks.awaitEvent(accountId, 'MONEY_DEPOSITED')
+    * match second.paymentId != paymentId
+    * match second.balance.amount == '101.00'
+    Given path 'accounts', accountId
+    When method get
+    Then match response.balance == '101.00'
+
+  Scenario: a payment id reused for a different amount violates the contract and is dead-lettered
+    * def paymentId = 'pay-' + hooks.uuid()
+    * hooks.depositPayment(accountId, paymentId, '100.00')
+    * def credited = hooks.awaitEvent(accountId, 'MONEY_DEPOSITED')
+    * hooks.depositPayment(accountId, paymentId, '999.00')
+    * def cause = hooks.awaitDeadLetter(accountId)
+    * match cause contains 'IllegalArgumentException'
+    Given path 'accounts', accountId
+    When method get
+    Then match response.balance == '100.00'
+
   Scenario: the statement is paginated newest first with an opaque cursor
     * hooks.deposit(accountId, '10.00')
     * hooks.deposit(accountId, '20.00')

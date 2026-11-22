@@ -10,6 +10,16 @@ groups:
         annotations:
           summary: "A savings account was overdrawn by a late withdrawal confirmation"
 
+      - alert: SavingsInstructionDeadLettered
+        # An instruction from Payments could not be applied and was parked on the dead-letter topic.
+        # Nothing is lost, but the money is not where Payments believes it is until someone inspects,
+        # fixes and replays it (runbook: ADR 0007).
+        expr: increase(savings_messages_dead_lettered_total[10m]) > 0
+        labels:
+          severity: page
+        annotations:
+          summary: "{{ $value }} payment instructions were dead-lettered on {{ $labels.topic }}"
+
       - alert: SavingsOutboxBacklog
         # Events are committed but not reaching Kafka (broker down, relay stuck, lock not released).
         expr: savings_outbox_pending > 100

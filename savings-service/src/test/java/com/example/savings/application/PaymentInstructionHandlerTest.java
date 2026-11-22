@@ -12,6 +12,8 @@ import com.example.savings.application.PaymentInstruction.Deposit;
 import com.example.savings.application.PaymentInstruction.RequestWithdrawal;
 import com.example.savings.application.port.AccountEventPublisher;
 import com.example.savings.application.port.Accounts;
+import com.example.savings.application.port.Deposits;
+import com.example.savings.application.port.Deposits.RecordedDeposit;
 import com.example.savings.application.port.Holds;
 import com.example.savings.application.port.Ledger;
 import com.example.savings.application.port.ProcessedEvents;
@@ -48,6 +50,7 @@ class PaymentInstructionHandlerTest {
     @Mock Holds holds;
     @Mock Ledger ledger;
     @Mock ProcessedEvents processedEvents;
+    @Mock Deposits deposits;
     @Mock AccountEventPublisher events;
     @Mock SavingsMetrics metrics;
 
@@ -57,8 +60,8 @@ class PaymentInstructionHandlerTest {
     @BeforeEach
     void setUp() {
         var policy = new SavingsPolicy(ZoneId.of("Europe/Berlin"), Duration.ofHours(72));
-        handler = new PaymentInstructionHandler(accounts, holds, ledger, processedEvents, events, metrics, policy,
-                Clock.fixed(NOW, ZoneOffset.UTC));
+        handler = new PaymentInstructionHandler(accounts, holds, ledger, processedEvents, deposits, events, metrics,
+                policy, Clock.fixed(NOW, ZoneOffset.UTC));
         account = Account.open(UUID.randomUUID(), BigDecimal.ZERO, NOW, ZoneOffset.UTC);
     }
 
@@ -113,5 +116,32 @@ class PaymentInstructionHandlerTest {
 
         org.assertj.core.api.Assertions.assertThatIllegalArgumentException()
                 .isThrownBy(() -> handler.handle(new ConfirmWithdrawal("e3", account.id(), "wd-1")));
+    }
+
+    @Test
+    void paymentResentUnderNewMessageIdIsCreditedOnce() {
+        var earlier = new RecordedDeposit("p1", account.id(), Money.of("10.00"), "e1", NOW);
+        when(processedEvents.markProcessed("e2")).thenReturn(true);
+        when(accounts.get(account.id())).thenReturn(account);
+        when(deposits.recordIfNew(any())).thenReturn(Optional.of(earlier));
+
+        handler.handle(new Deposit("e2", account.id(), "p1", Money.of("10.00")));
+
+        assertThat(account.balance()).isEqualTo(Money.ZERO);
+        verifyNoInteractions(ledger, events);
+        verify(metrics).duplicateMessage();
+    }
+
+    @Test
+    void paymentIdReusedForDifferentMoneyIsAContractViolation() {
+        var earlier = new RecordedDeposit("p1", account.id(), Money.of("10.00"), "e1", NOW);
+        when(processedEvents.markProcessed("e2")).thenReturn(true);
+        when(accounts.get(account.id())).thenReturn(account);
+        when(deposits.recordIfNew(any())).thenReturn(Optional.of(earlier));
+
+        org.assertj.core.api.Assertions.assertThatIllegalArgumentException()
+                .isThrownBy(() -> handler.handle(new Deposit("e2", account.id(), "p1", Money.of("99.00"))))
+                .withMessageContaining("p1");
+        verifyNoInteractions(ledger, events);
     }
 }

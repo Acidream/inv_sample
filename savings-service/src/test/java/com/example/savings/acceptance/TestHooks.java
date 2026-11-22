@@ -65,8 +65,17 @@ public final class TestHooks {
 
     /** Lets a feature deliver the very same message twice. */
     public static String depositWithEventId(String accountId, String amount, String eventId) {
+        return sendPayment(accountId, eventId, "pay-" + eventId, amount);
+    }
+
+    /** Lets a feature re-send a payment as a new message, as Payments might after losing track of it. */
+    public static String depositPayment(String accountId, String paymentId, String amount) {
+        return sendPayment(accountId, UUID.randomUUID().toString(), paymentId, amount);
+    }
+
+    private static String sendPayment(String accountId, String eventId, String paymentId, String amount) {
         send(envelope(accountId, eventId).setPaymentReceived(PaymentReceived.newBuilder()
-                .setPaymentId("pay-" + eventId)
+                .setPaymentId(paymentId)
                 .setAmount(eur(amount))));
         return eventId;
     }

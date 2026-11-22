@@ -6,6 +6,8 @@ import com.example.savings.application.PaymentInstruction.Deposit;
 import com.example.savings.application.PaymentInstruction.RequestWithdrawal;
 import com.example.savings.application.port.AccountEventPublisher;
 import com.example.savings.application.port.Accounts;
+import com.example.savings.application.port.Deposits;
+import com.example.savings.application.port.Deposits.RecordedDeposit;
 import com.example.savings.application.port.Holds;
 import com.example.savings.application.port.Ledger;
 import com.example.savings.application.port.ProcessedEvents;
@@ -26,8 +28,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Applies instructions from Payments. One instruction = one transaction that contains the
- * de-duplication marker, the state change, the ledger entry and the outgoing event (outbox).
+ * de-duplication markers, the state change, the ledger entry and the outgoing event (outbox).
  * Either all of it commits or none of it.
+ *
+ * <p>De-duplication works on two levels: the message id catches redeliveries of the same message;
+ * the business key (payment id, withdrawal request id) catches the same intent re-sent as a new message.
  */
 @Service
 public class PaymentInstructionHandler {
@@ -38,17 +43,20 @@ public class PaymentInstructionHandler {
     private final Holds holds;
     private final Ledger ledger;
     private final ProcessedEvents processedEvents;
+    private final Deposits deposits;
     private final AccountEventPublisher events;
     private final SavingsMetrics metrics;
     private final SavingsPolicy policy;
     private final Clock clock;
 
     public PaymentInstructionHandler(Accounts accounts, Holds holds, Ledger ledger, ProcessedEvents processedEvents,
-            AccountEventPublisher events, SavingsMetrics metrics, SavingsPolicy policy, Clock clock) {
+            Deposits deposits, AccountEventPublisher events, SavingsMetrics metrics, SavingsPolicy policy,
+            Clock clock) {
         this.accounts = accounts;
         this.holds = holds;
         this.ledger = ledger;
         this.processedEvents = processedEvents;
+        this.deposits = deposits;
         this.events = events;
         this.metrics = metrics;
         this.policy = policy;
@@ -72,10 +80,34 @@ public class PaymentInstructionHandler {
 
     private void deposit(Deposit deposit) {
         var account = accounts.get(deposit.accountId());
-        var entry = account.deposit(deposit.amount(), deposit.paymentId(), clock.instant());
+        var now = clock.instant();
+        var incoming = new RecordedDeposit(deposit.paymentId(), account.id(), deposit.amount(), deposit.eventId(),
+                now);
+        var earlier = deposits.recordIfNew(incoming);
+        if (earlier.isPresent()) {
+            skipResentPayment(incoming, earlier.get());
+            return;
+        }
+        var entry = account.deposit(deposit.amount(), deposit.paymentId(), now);
         ledger.append(entry);
         events.publish(new MoneyDeposited(account.id(), deposit.paymentId(), deposit.amount(), account.balance()));
         metrics.deposited(deposit.amount());
+    }
+
+    /**
+     * A payment that was already credited, arriving under a new message id. Identical money: a re-send,
+     * skipped. Different account or amount: Payments reused a payment id, which is a contract violation
+     * that a person must look at (the exception sends the message to the dead-letter topic).
+     */
+    private void skipResentPayment(RecordedDeposit incoming, RecordedDeposit earlier) {
+        if (!incoming.sameMoneyAs(earlier)) {
+            throw new IllegalArgumentException("Payment %s was already credited as %s to account %s; message %s"
+                    .formatted(earlier.paymentId(), earlier.amount().amount(), earlier.accountId(), incoming.eventId())
+                    + " asks for %s to account %s".formatted(incoming.amount().amount(), incoming.accountId()));
+        }
+        log.info("Payment {} was already credited by message {}; skipping message {}", earlier.paymentId(),
+                earlier.eventId(), incoming.eventId());
+        metrics.duplicateMessage();
     }
 
     private void requestWithdrawal(RequestWithdrawal request) {
