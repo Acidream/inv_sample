@@ -18,7 +18,7 @@ public record SavingsProperties(
         @Valid @NotNull Outbox outbox) {
 
     public record Topics(@NotBlank String paymentInstructions, @NotBlank String accountEvents,
-            @Positive int partitions) {
+            @NotBlank String postings, @Positive int partitions) {
     }
 
     public record Outbox(@Positive long pollIntervalMs, @Positive int batchSize) {

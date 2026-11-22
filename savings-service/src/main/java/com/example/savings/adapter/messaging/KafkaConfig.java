@@ -69,6 +69,11 @@ class KafkaConfig {
         return topic(properties.topics().accountEvents(), properties);
     }
 
+    @Bean
+    NewTopic postingsTopic(SavingsProperties properties) {
+        return topic(properties.topics().postings(), properties);
+    }
+
     private static NewTopic topic(String name, SavingsProperties properties) {
         return TopicBuilder.name(name).partitions(properties.topics().partitions()).replicas(1).build();
     }

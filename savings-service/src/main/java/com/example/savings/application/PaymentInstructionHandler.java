@@ -9,7 +9,6 @@ import com.example.savings.application.port.Accounts;
 import com.example.savings.application.port.Deposits;
 import com.example.savings.application.port.Deposits.RecordedDeposit;
 import com.example.savings.application.port.Holds;
-import com.example.savings.application.port.Ledger;
 import com.example.savings.application.port.ProcessedEvents;
 import com.example.savings.application.port.SavingsMetrics;
 import com.example.savings.domain.AccountEvent.FundsReleased;
@@ -41,7 +40,7 @@ public class PaymentInstructionHandler {
 
     private final Accounts accounts;
     private final Holds holds;
-    private final Ledger ledger;
+    private final Bookkeeping bookkeeping;
     private final ProcessedEvents processedEvents;
     private final Deposits deposits;
     private final AccountEventPublisher events;
@@ -49,12 +48,12 @@ public class PaymentInstructionHandler {
     private final SavingsPolicy policy;
     private final Clock clock;
 
-    public PaymentInstructionHandler(Accounts accounts, Holds holds, Ledger ledger, ProcessedEvents processedEvents,
-            Deposits deposits, AccountEventPublisher events, SavingsMetrics metrics, SavingsPolicy policy,
-            Clock clock) {
+    public PaymentInstructionHandler(Accounts accounts, Holds holds, Bookkeeping bookkeeping,
+            ProcessedEvents processedEvents, Deposits deposits, AccountEventPublisher events, SavingsMetrics metrics,
+            SavingsPolicy policy, Clock clock) {
         this.accounts = accounts;
         this.holds = holds;
-        this.ledger = ledger;
+        this.bookkeeping = bookkeeping;
         this.processedEvents = processedEvents;
         this.deposits = deposits;
         this.events = events;
@@ -89,7 +88,7 @@ public class PaymentInstructionHandler {
             return;
         }
         var entry = account.deposit(deposit.amount(), deposit.paymentId(), now);
-        ledger.append(entry);
+        bookkeeping.book(entry);
         events.publish(new MoneyDeposited(account.id(), deposit.paymentId(), deposit.amount(), account.balance()));
         metrics.deposited(deposit.amount());
     }
@@ -142,7 +141,7 @@ public class PaymentInstructionHandler {
                 ? account.settleHold(hold.amount(), hold.requestId(), now)
                 // The hold had expired and its funds were released: the money has left the bank anyway.
                 : account.debitAfterExpiredHold(hold.amount(), hold.requestId(), now);
-        ledger.append(entry);
+        bookkeeping.book(entry);
         events.publish(new MoneyWithdrawn(account.id(), hold.requestId(), hold.amount(), account.balance()));
         metrics.withdrawal("settled");
         if (account.balance().isNegative()) {

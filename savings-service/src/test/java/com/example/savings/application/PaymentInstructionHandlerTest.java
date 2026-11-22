@@ -15,7 +15,6 @@ import com.example.savings.application.port.Accounts;
 import com.example.savings.application.port.Deposits;
 import com.example.savings.application.port.Deposits.RecordedDeposit;
 import com.example.savings.application.port.Holds;
-import com.example.savings.application.port.Ledger;
 import com.example.savings.application.port.ProcessedEvents;
 import com.example.savings.application.port.SavingsMetrics;
 import com.example.savings.domain.Account;
@@ -48,7 +47,7 @@ class PaymentInstructionHandlerTest {
 
     @Mock Accounts accounts;
     @Mock Holds holds;
-    @Mock Ledger ledger;
+    @Mock Bookkeeping bookkeeping;
     @Mock ProcessedEvents processedEvents;
     @Mock Deposits deposits;
     @Mock AccountEventPublisher events;
@@ -60,8 +59,8 @@ class PaymentInstructionHandlerTest {
     @BeforeEach
     void setUp() {
         var policy = new SavingsPolicy(ZoneId.of("Europe/Berlin"), Duration.ofHours(72));
-        handler = new PaymentInstructionHandler(accounts, holds, ledger, processedEvents, deposits, events, metrics,
-                policy, Clock.fixed(NOW, ZoneOffset.UTC));
+        handler = new PaymentInstructionHandler(accounts, holds, bookkeeping, processedEvents, deposits, events,
+                metrics, policy, Clock.fixed(NOW, ZoneOffset.UTC));
         account = Account.open(UUID.randomUUID(), BigDecimal.ZERO, NOW, ZoneOffset.UTC);
     }
 
@@ -71,7 +70,7 @@ class PaymentInstructionHandlerTest {
 
         handler.handle(new Deposit("e1", account.id(), "p1", Money.of("10.00")));
 
-        verifyNoInteractions(accounts, ledger, events);
+        verifyNoInteractions(accounts, bookkeeping, events);
         verify(metrics).duplicateMessage();
     }
 
@@ -128,7 +127,7 @@ class PaymentInstructionHandlerTest {
         handler.handle(new Deposit("e2", account.id(), "p1", Money.of("10.00")));
 
         assertThat(account.balance()).isEqualTo(Money.ZERO);
-        verifyNoInteractions(ledger, events);
+        verifyNoInteractions(bookkeeping, events);
         verify(metrics).duplicateMessage();
     }
 
@@ -142,6 +141,6 @@ class PaymentInstructionHandlerTest {
         org.assertj.core.api.Assertions.assertThatIllegalArgumentException()
                 .isThrownBy(() -> handler.handle(new Deposit("e2", account.id(), "p1", Money.of("99.00"))))
                 .withMessageContaining("p1");
-        verifyNoInteractions(ledger, events);
+        verifyNoInteractions(bookkeeping, events);
     }
 }

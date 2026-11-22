@@ -2,7 +2,6 @@ package com.example.savings.application;
 
 import com.example.savings.application.port.AccountEventPublisher;
 import com.example.savings.application.port.Accounts;
-import com.example.savings.application.port.InterestAccruals;
 import com.example.savings.application.port.Ledger;
 import com.example.savings.application.port.SavingsMetrics;
 import com.example.savings.domain.AccountEvent.InterestPaid;
@@ -24,17 +23,17 @@ public class InterestService {
 
     private final Accounts accounts;
     private final Ledger ledger;
-    private final InterestAccruals accruals;
+    private final Bookkeeping bookkeeping;
     private final AccountEventPublisher events;
     private final SavingsMetrics metrics;
     private final SavingsPolicy policy;
     private final Clock clock;
 
-    public InterestService(Accounts accounts, Ledger ledger, InterestAccruals accruals, AccountEventPublisher events,
+    public InterestService(Accounts accounts, Ledger ledger, Bookkeeping bookkeeping, AccountEventPublisher events,
             SavingsMetrics metrics, SavingsPolicy policy, Clock clock) {
         this.accounts = accounts;
         this.ledger = ledger;
-        this.accruals = accruals;
+        this.bookkeeping = bookkeeping;
         this.events = events;
         this.metrics = metrics;
         this.policy = policy;
@@ -57,12 +56,12 @@ public class InterestService {
         for (var day = account.nextAccrualDate(); !day.isAfter(through); day = day.plusDays(1)) {
             var endOfDay = day.plusDays(1).atStartOfDay(policy.businessZone()).toInstant();
             var interest = account.accrueDay(day, ledger.balanceAt(accountId, endOfDay));
-            accruals.record(accountId, day, interest);
+            bookkeeping.accrue(accountId, day, interest);
 
             if (day.equals(day.withDayOfMonth(day.lengthOfMonth()))) {
                 var period = YearMonth.from(day);
                 account.payOutInterest(period, clock.instant()).ifPresent(entry -> {
-                    ledger.append(entry);
+                    bookkeeping.book(entry);
                     events.publish(new InterestPaid(accountId, period, entry.amount(), entry.balanceAfter()));
                     metrics.interestPaid(entry.amount());
                 });

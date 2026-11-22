@@ -18,3 +18,4 @@ Format: [Michael Nygard](https://cognitect.com/blog/2011/11/15/documenting-archi
 | [0011](0011-ledger-partitioning-and-keyset-pagination.md) | Monthly range partitions and keyset pagination for the ledger | Accepted |
 | [0012](0012-acceptance-tests-first.md) | Acceptance tests first: Karate + Testcontainers | Accepted |
 | [0013](0013-observability.md) | Business metrics, dashboard and alerts | Accepted |
+| [0014](0014-double-entry-postings-for-finance.md) | Savings publishes balanced double-entry postings for Finance | Accepted |

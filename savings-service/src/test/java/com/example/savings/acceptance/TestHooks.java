@@ -7,13 +7,16 @@ import com.example.events.payments.v1.WithdrawalCancelled;
 import com.example.events.payments.v1.WithdrawalConfirmed;
 import com.example.events.payments.v1.WithdrawalRequested;
 import com.example.events.savings.v1.AccountEvent;
+import com.example.events.savings.v1.Posting;
 import com.example.savings.adapter.scheduling.HoldExpiryJob;
 import com.example.savings.adapter.scheduling.InterestAccrualJob;
 import com.example.savings.support.KafkaTestSupport;
 import com.example.savings.support.MutableClock;
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.util.JsonFormat;
+import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.context.ApplicationContext;
@@ -117,6 +120,22 @@ public final class TestHooks {
         }
     }
 
+    /** Waits for the next posting of the given type (e.g. "DEPOSIT") for the account; see {@link #awaitPostings}. */
+    public static Map<String, Object> awaitPosting(String accountId, String type) {
+        return awaitPostings(accountId, type, 1).getFirst();
+    }
+
+    /**
+     * Waits for the next {@code count} postings of the given type for the account, as JSON-like maps.
+     * Every posting is checked to balance before a feature sees it: that is the contract with Finance.
+     */
+    public static List<Map<String, Object>> awaitPostings(String accountId, String type, int count) {
+        return kafka().awaitPostings(accountId, Posting.Type.valueOf(type), count).stream()
+                .map(TestHooks::balanced)
+                .map(TestHooks::toMap)
+                .toList();
+    }
+
     /** Waits until the instruction with this account key was dead-lettered; returns the DLT exception class. */
     public static String awaitDeadLetter(String accountId) {
         var record = kafka().awaitDeadLetter(accountId);
@@ -125,6 +144,32 @@ public final class TestHooks {
     }
 
     // --- helpers ----------------------------------------------------------------------------------
+
+    private static Posting balanced(Posting posting) {
+        var debits = sum(posting, Posting.Line.Side.DEBIT);
+        var credits = sum(posting, Posting.Line.Side.CREDIT);
+        if (debits.compareTo(credits) != 0) {
+            throw new AssertionError("Unbalanced posting: debits " + debits + ", credits " + credits + ": " + posting);
+        }
+        return posting;
+    }
+
+    private static BigDecimal sum(Posting posting, Posting.Line.Side side) {
+        return posting.getLinesList().stream()
+                .filter(line -> line.getSide() == side)
+                .map(line -> new BigDecimal(line.getAmount()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private static Map<String, Object> toMap(com.google.protobuf.Message message) {
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> map = JSON.readValue(JsonFormat.printer().print(message), Map.class);
+            return map;
+        } catch (InvalidProtocolBufferException e) {
+            throw new IllegalStateException(e);
+        }
+    }
 
     private static PaymentInstruction.Builder envelope(String accountId) {
         return envelope(accountId, UUID.randomUUID().toString());

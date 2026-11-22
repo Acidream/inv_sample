@@ -31,8 +31,10 @@ read and check on every withdrawal.
 - **Full double-entry bookkeeping** (every booking debits one account and credits another, including
   internal GL accounts such as "interest expense" and "payments clearing"). This is what a production
   core-banking ledger should do: it makes the books balance by construction and supports
-  reconciliation with the general ledger. Deferred because, with a single customer-facing account
-  type, it adds a second entry per booking without changing any behaviour the sample demonstrates.
+  reconciliation with the general ledger. Not as the internal source of truth: with a single
+  customer-facing account type, it adds a second entry per booking without changing any behaviour.
+  Instead, every booking is published to Finance as a balanced posting (amended by
+  [ADR 0014](0014-double-entry-postings-for-finance.md)).
 - **Balance computed from the ledger on every read.** Always correct but O(entries); the cached
   balance plus `balance_after` keeps reads O(1) without losing auditability.
 

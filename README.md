@@ -20,11 +20,12 @@ flowchart LR
     P[Payments team] -- "payments.savings-instructions.v1<br/>PaymentReceived · WithdrawalRequested<br/>WithdrawalConfirmed · WithdrawalCancelled" --> S
     subgraph S [savings-service]
         direction TB
-        UC[use cases] --> DB[(Postgres<br/>accounts · holds · ledger<br/>outbox · processed events)]
+        UC[use cases] --> DB[(Postgres<br/>accounts · holds · ledger<br/>outbox · processed events · deposits)]
         J[nightly jobs<br/>interest · hold expiry] --> UC
         R[outbox relay] --> DB
     end
     R -- "savings.account-events.v1<br/>AccountOpened · MoneyDeposited · FundsReserved<br/>WithdrawalRejected · MoneyWithdrawn · FundsReleased · InterestPaid" --> C[other teams]
+    R -- "savings.postings.v1<br/>balanced double-entry postings" --> F[Finance / general ledger]
     S -. metrics .-> Prom[Prometheus / Grafana]
 ```
 
@@ -34,6 +35,9 @@ flowchart LR
   arrives after that is still booked, because the money has already left the bank.
 - **Interest**: ACT/365 on each day's closing balance, accrued nightly with sub-cent precision,
   credited monthly rounded half-even, with the remainder carried over.
+- **Bookkeeping for Finance**: every booking and every daily accrual is also published as a balanced
+  double-entry posting (customer, payments clearing, interest expense, interest payable), so the
+  bank's general ledger can be kept and reconciled from it.
 
 ```mermaid
 stateDiagram-v2
@@ -50,6 +54,7 @@ stateDiagram-v2
 |---|---|---|
 | Exact money | `BigDecimal` value object, strings on the wire, half-even rounding only at payout | [ADR 0004](docs/adr/0004-money-and-append-only-ledger.md) |
 | Auditability | Append-only ledger with `balance_after`; daily accrual rows | [0004](docs/adr/0004-money-and-append-only-ledger.md), [0010](docs/adr/0010-interest-accrual-and-payout.md) |
+| Books that balance | Every booking published as a double-entry posting, balanced by construction, value-dated | [0014](docs/adr/0014-double-entry-postings-for-finance.md) |
 | No lost or phantom events | Transactional outbox, single ordered relay | [0006](docs/adr/0006-transactional-outbox.md) |
 | At-least-once delivery | De-duplication by message id and by payment/request id in the business transaction; retries; alerted dead-letter topic; what Payments must do so nothing is lost | [0007](docs/adr/0007-idempotent-consumer-and-dead-letters.md) |
 | Concurrency | Per-account ordering via partition key, `@Version` optimistic locking, DB constraints | [0008](docs/adr/0008-ordering-and-concurrency.md) |
@@ -87,6 +92,7 @@ The acceptance features are the best entry point into the behaviour:
 - [withdrawals.feature](savings-service/src/test/resources/acceptance/withdrawals.feature): reserve/confirm/cancel, rejection, contract violation → DLT
 - [hold-expiry.feature](savings-service/src/test/resources/acceptance/hold-expiry.feature): 72 h expiry, late confirmation that overdraws
 - [interest.feature](savings-service/src/test/resources/acceptance/interest.feature): monthly payout, catch-up from closing balances, carried remainders
+- [postings.feature](savings-service/src/test/resources/acceptance/postings.feature): double-entry postings for deposits, withdrawals, daily accruals and payouts
 
 ## Running it locally
 

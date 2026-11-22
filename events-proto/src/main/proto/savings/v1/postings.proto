@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package savings.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option java_multiple_files = true;
+option java_package = "com.example.events.savings.v1";
+
+// Topic: savings.postings.v1 (owned by the Savings team, consumed by Finance for the general ledger).
+// Key:   account_id. Postings of one account are published in order.
+// Delivery is at-least-once: consumers must de-duplicate on posting_id.
+//
+// Every posting balances: the sum of DEBIT amounts equals the sum of CREDIT amounts.
+// Book accounts are logical names; Finance maps them to its chart of accounts:
+//   customer:<account id>  liability, what the bank owes the customer
+//   payments-clearing      money in transit to or from Payments
+//   interest-expense       profit and loss, what interest costs the bank
+//   interest-payable       liability, interest earned but not yet credited
+message Posting {
+  enum Type {
+    TYPE_UNSPECIFIED = 0;
+    DEPOSIT = 1;            // payments-clearing  -> customer
+    WITHDRAWAL = 2;         // customer           -> payments-clearing
+    INTEREST_ACCRUAL = 3;   // interest-expense   -> interest-payable, daily, sub-cent
+    INTEREST_PAYOUT = 4;    // interest-payable   -> customer, monthly, rounded to cents
+  }
+
+  message Line {
+    enum Side {
+      SIDE_UNSPECIFIED = 0;
+      DEBIT = 1;
+      CREDIT = 2;
+    }
+    string book_account = 1;
+    Side side = 2;
+    string amount = 3;      // positive decimal; up to 10 fraction digits (accruals), else 2
+  }
+
+  string posting_id = 1;
+  google.protobuf.Timestamp booked_at = 2;
+  string value_date = 3;    // ISO date (Europe/Berlin) the posting belongs to in the books
+  string account_id = 4;
+  Type type = 5;
+  string reference = 6;     // payment id, withdrawal request id, "interest:2026-01" or "accrual:2026-01-31"
+  string currency = 7;      // ISO 4217, "EUR"
+  repeated Line lines = 8;
+}

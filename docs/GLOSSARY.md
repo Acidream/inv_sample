@@ -27,7 +27,12 @@ Terms as they are used in code, events and docs. If code and glossary disagree, 
 | **Payout** | Monthly credit of accrued interest, rounded half-even to cents. The rounding remainder stays accrued. | `Account.payOutInterest` |
 | **Period** | The calendar month (`YYYY-MM`) a payout belongs to. | `InterestPaid.period` |
 | **Account event** | A fact Savings publishes for others: AccountOpened, MoneyDeposited, FundsReserved, WithdrawalRejected, MoneyWithdrawn, FundsReleased, InterestPaid. | `domain.AccountEvent`, `savings.v1.AccountEvent` |
-| **Outbox** | Table where account events are written in the business transaction before being relayed to Kafka. | `outbox_event`, `OutboxRelay` |
+| **Posting** | The bank-wide, double-entry view of a booking: lines whose debits equal their credits, published to Finance. Every ledger entry and every accrual has one; holds don't. | `domain.Posting`, `savings.v1.Posting` |
+| **Book account** | A logical account in the bank's books: `customer:<id>`, `payments-clearing`, `interest-expense`, `interest-payable`. Finance maps them to its chart of accounts. | `domain.BookAccount` |
+| **Value date** | The business day a posting belongs to in the books, which can differ from when it was computed (an accrual for 31 January booked after midnight). | `Posting.valueDate` |
+| **Sub-ledger / general ledger** | Savings keeps the customer-level books (sub-ledger); Finance keeps the bank's books (general ledger, GL). Postings connect the two. | `Bookkeeping` |
+| **Outbox** | Table where account events and postings are written in the business transaction before being relayed to Kafka. | `outbox_event`, `Outbox`, `OutboxRelay` |
+| **Deposit record** | The payment id of every credited payment; makes a payment re-sent as a new message a no-op. | `deposit`, `Deposits` |
 | **Processed event** | Id of an incoming message that has already been applied; makes the consumer idempotent. | `processed_event` |
 | **Dead-letter topic (DLT)** | `<topic>.DLT`. Where messages go that can never be processed (malformed, contract violation). | `KafkaConfig` |
 | **Contract violation** | An instruction that contradicts earlier ones, e.g. confirming a cancelled withdrawal. Never silently ignored. | `IllegalHoldTransitionException` |

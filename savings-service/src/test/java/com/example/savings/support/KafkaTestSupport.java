@@ -1,6 +1,7 @@
 package com.example.savings.support;
 
 import com.example.events.savings.v1.AccountEvent;
+import com.example.events.savings.v1.Posting;
 import com.google.protobuf.InvalidProtocolBufferException;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -30,10 +31,12 @@ public class KafkaTestSupport implements DisposableBean {
     public static final String INSTRUCTIONS = "payments.savings-instructions.v1";
     public static final String DEAD_LETTERS = INSTRUCTIONS + ".DLT";
     public static final String ACCOUNT_EVENTS = "savings.account-events.v1";
+    public static final String POSTINGS = "savings.postings.v1";
     private static final Duration TIMEOUT = Duration.ofSeconds(20);
 
     private final KafkaProducer<String, byte[]> producer;
     private final List<AccountEvent> events = new ArrayList<>();
+    private final List<Posting> postings = new ArrayList<>();
     private final List<ConsumerRecord<String, byte[]>> deadLetters = new ArrayList<>();
     private final Thread consumerThread;
     private volatile boolean running = true;
@@ -77,6 +80,23 @@ public class KafkaTestSupport implements DisposableBean {
         }, type + " for account " + accountId);
     }
 
+    /** Waits for, and consumes, the next {@code count} postings of that type for the account, in order. */
+    public List<Posting> awaitPostings(String accountId, Posting.Type type, int count) {
+        return await(() -> {
+            synchronized (postings) {
+                var matches = postings.stream()
+                        .filter(p -> p.getAccountId().equals(accountId) && p.getType() == type)
+                        .limit(count)
+                        .toList();
+                if (matches.size() < count) {
+                    return Optional.<List<Posting>>empty();
+                }
+                postings.removeAll(matches);
+                return Optional.of(matches);
+            }
+        }, count + " x " + type + " postings for account " + accountId);
+    }
+
     public ConsumerRecord<String, byte[]> awaitDeadLetter(String key) {
         return await(() -> {
             synchronized (deadLetters) {
@@ -104,12 +124,16 @@ public class KafkaTestSupport implements DisposableBean {
 
     private void observe(KafkaConsumer<String, byte[]> consumer) {
         try (consumer) {
-            consumer.subscribe(List.of(ACCOUNT_EVENTS, DEAD_LETTERS));
+            consumer.subscribe(List.of(ACCOUNT_EVENTS, POSTINGS, DEAD_LETTERS));
             while (running) {
                 for (var record : consumer.poll(Duration.ofMillis(100))) {
                     if (record.topic().equals(ACCOUNT_EVENTS)) {
                         synchronized (events) {
                             events.add(parse(record.value()));
+                        }
+                    } else if (record.topic().equals(POSTINGS)) {
+                        synchronized (postings) {
+                            postings.add(parsePosting(record.value()));
                         }
                     } else {
                         synchronized (deadLetters) {
@@ -124,6 +148,14 @@ public class KafkaTestSupport implements DisposableBean {
     private static AccountEvent parse(byte[] bytes) {
         try {
             return AccountEvent.parseFrom(bytes);
+        } catch (InvalidProtocolBufferException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static Posting parsePosting(byte[] bytes) {
+        try {
+            return Posting.parseFrom(bytes);
         } catch (InvalidProtocolBufferException e) {
             throw new IllegalStateException(e);
         }
