@@ -8,7 +8,7 @@ create sequence ledger_entry_seq increment by 50;
 create table ledger_entry (
     id            bigint         not null,
     account_id    uuid           not null references account (id),
-    type          varchar(16)    not null check (type in ('DEPOSIT', 'WITHDRAWAL', 'INTEREST')),
+    type          varchar(20)    not null check (type in ('DEPOSIT', 'WITHDRAWAL', 'WITHDRAWAL_RETURN', 'INTEREST')),
     amount        numeric(19, 2) not null,
     balance_after numeric(19, 2) not null,
     reference     varchar(100)   not null,

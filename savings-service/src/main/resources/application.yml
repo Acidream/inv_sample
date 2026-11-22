@@ -44,7 +44,6 @@ management:
 
 savings:
   business-zone: Europe/Berlin
-  hold-ttl: 72h
   topics:
     payment-instructions: payments.savings-instructions.v1
     account-events: savings.account-events.v1
@@ -55,5 +54,4 @@ savings:
     batch-size: 100
   jobs:
     interest-accrual-cron: "0 15 0 * * *"      # 00:15 Berlin time, after the day is complete
-    hold-expiry-cron: "0 * * * * *"            # every minute
     partition-maintenance-cron: "0 0 3 * * *"

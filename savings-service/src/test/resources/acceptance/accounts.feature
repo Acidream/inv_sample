@@ -15,7 +15,7 @@ Feature: Opening and viewing savings accounts
       """
       {
         id: '#uuid', customerId: '#(customerId)', annualRate: '0.0250', currency: 'EUR',
-        balance: '0.00', heldAmount: '0.00', availableBalance: '0.00',
+        balance: '0.00',
         accruedInterest: '0.0000000000', openedAt: '#string'
       }
       """

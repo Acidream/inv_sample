@@ -2,13 +2,11 @@ package com.example.savings.acceptance;
 
 import com.example.events.common.v1.Money;
 import com.example.events.payments.v1.PaymentInstruction;
-import com.example.events.payments.v1.PaymentReceived;
-import com.example.events.payments.v1.WithdrawalCancelled;
-import com.example.events.payments.v1.WithdrawalConfirmed;
-import com.example.events.payments.v1.WithdrawalRequested;
+import com.example.events.payments.v1.TransferFromCurrentAccount;
+import com.example.events.payments.v1.TransferReturned;
+import com.example.events.payments.v1.TransferToCurrentAccount;
 import com.example.events.savings.v1.AccountEvent;
 import com.example.events.savings.v1.Posting;
-import com.example.savings.adapter.scheduling.HoldExpiryJob;
 import com.example.savings.adapter.scheduling.InterestAccrualJob;
 import com.example.savings.support.KafkaTestSupport;
 import com.example.savings.support.MutableClock;
@@ -56,48 +54,46 @@ public final class TestHooks {
         context.getBean(InterestAccrualJob.class).run();
     }
 
-    public static void runHoldExpiryJob() {
-        context.getBean(HoldExpiryJob.class).run();
-    }
-
     // --- Payments team instructions ---------------------------------------------------------------
 
+    /** Money from the current account; the current account has already been debited. */
     public static String deposit(String accountId, String amount) {
         return depositWithEventId(accountId, amount, UUID.randomUUID().toString());
     }
 
     /** Lets a feature deliver the very same message twice. */
     public static String depositWithEventId(String accountId, String amount, String eventId) {
-        return sendPayment(accountId, eventId, "pay-" + eventId, amount);
-    }
-
-    /** Lets a feature re-send a payment as a new message, as Payments might after losing track of it. */
-    public static String depositPayment(String accountId, String paymentId, String amount) {
-        return sendPayment(accountId, UUID.randomUUID().toString(), paymentId, amount);
-    }
-
-    private static String sendPayment(String accountId, String eventId, String paymentId, String amount) {
-        send(envelope(accountId, eventId).setPaymentReceived(PaymentReceived.newBuilder()
-                .setPaymentId(paymentId)
-                .setAmount(eur(amount))));
+        transferIn(accountId, eventId, "tr-" + eventId, amount);
         return eventId;
     }
 
-    /** @return the generated withdrawal request id */
-    public static String requestWithdrawal(String accountId, String amount) {
-        var requestId = "wd-" + UUID.randomUUID();
-        send(envelope(accountId).setWithdrawalRequested(WithdrawalRequested.newBuilder()
-                .setRequestId(requestId)
+    /** Lets a feature re-send a transfer as a new message, as Payments might after losing track of it. */
+    public static void depositTransfer(String accountId, String transferId, String amount) {
+        transferIn(accountId, UUID.randomUUID().toString(), transferId, amount);
+    }
+
+    /** Money to the current account. @return the generated transfer id */
+    public static String withdraw(String accountId, String amount) {
+        var transferId = "tr-" + UUID.randomUUID();
+        withdrawTransfer(accountId, transferId, amount);
+        return transferId;
+    }
+
+    public static void withdrawTransfer(String accountId, String transferId, String amount) {
+        send(envelope(accountId).setTransferToCurrentAccount(TransferToCurrentAccount.newBuilder()
+                .setTransferId(transferId)
                 .setAmount(eur(amount))));
-        return requestId;
     }
 
-    public static void confirmWithdrawal(String accountId, String requestId) {
-        send(envelope(accountId).setWithdrawalConfirmed(WithdrawalConfirmed.newBuilder().setRequestId(requestId)));
+    /** Compensation: the current account refused the withdrawal. */
+    public static void returnTransfer(String accountId, String transferId) {
+        send(envelope(accountId).setTransferReturned(TransferReturned.newBuilder().setTransferId(transferId)));
     }
 
-    public static void cancelWithdrawal(String accountId, String requestId) {
-        send(envelope(accountId).setWithdrawalCancelled(WithdrawalCancelled.newBuilder().setRequestId(requestId)));
+    private static void transferIn(String accountId, String eventId, String transferId, String amount) {
+        send(envelope(accountId, eventId).setTransferFromCurrentAccount(TransferFromCurrentAccount.newBuilder()
+                .setTransferId(transferId)
+                .setAmount(eur(amount))));
     }
 
     // --- observing Savings ------------------------------------------------------------------------

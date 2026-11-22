@@ -1,9 +1,9 @@
 package com.example.savings.adapter.messaging;
 
 import com.example.savings.application.UnknownAccountException;
-import com.example.savings.application.UnknownWithdrawalException;
+import com.example.savings.application.UnknownTransferException;
 import com.example.savings.config.SavingsProperties;
-import com.example.savings.domain.IllegalHoldTransitionException;
+import com.example.savings.domain.IllegalTransferException;
 import com.google.protobuf.InvalidProtocolBufferException;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.apache.kafka.clients.admin.NewTopic;
@@ -25,7 +25,7 @@ class KafkaConfig {
 
     /**
      * Transient failures (DB hiccup, optimistic-lock conflict with a batch job) are retried a few times.
-     * Messages that can never succeed - unparseable, invalid, or violating the withdrawal contract -
+     * Messages that can never succeed - unparseable, invalid, or contradicting an earlier transfer -
      * go straight to the dead-letter topic so they don't block the partition.
      */
     @Bean
@@ -45,9 +45,9 @@ class KafkaConfig {
         handler.addNotRetryableExceptions(
                 InvalidProtocolBufferException.class,
                 IllegalArgumentException.class,
-                IllegalHoldTransitionException.class,
+                IllegalTransferException.class,
                 UnknownAccountException.class,
-                UnknownWithdrawalException.class);
+                UnknownTransferException.class);
         return handler;
     }
 

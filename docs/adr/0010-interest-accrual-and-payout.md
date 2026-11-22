@@ -11,7 +11,7 @@ missed or repeated job runs, over a table with potentially millions of accounts.
 
 **Calculation** (`domain.Interest`, `Account.accrueDay`, `Account.payOutInterest`)
 - Day count **ACT/365 Fixed**: each calendar day earns `end-of-day balance × annual rate ÷ 365`, also
-  in leap years. Negative balances earn nothing (debit interest is out of scope).
+  in leap years. Balances can't be negative (ADR 0015); a zero balance earns nothing.
 - Days are calendar days in **Europe/Berlin**. The end-of-day balance is read from the ledger
   (`balance_after` of the last entry before midnight Berlin time), not from the current balance.
 - Accruals are kept with 10 fraction digits in `interest_accrual` (one row per account and day: the

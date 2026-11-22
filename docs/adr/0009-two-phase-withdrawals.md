@@ -1,6 +1,10 @@
 # 0009 – Two-phase withdrawals with holds, expiry and late confirmation
 
-Date: 2026-11-22 · Status: Accepted
+Date: 2026-11-22 · Status: Superseded by [0015](0015-transfers-only-with-the-current-account.md)
+
+> Kept for the record: this was the design while Savings paid out to external accounts. Savings now
+> only moves money to and from the customer's current account, which removes holds, expiry and late
+> confirmations entirely (ADR 0015).
 
 ## Context
 

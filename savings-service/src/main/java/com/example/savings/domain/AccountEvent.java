@@ -12,21 +12,17 @@ public sealed interface AccountEvent {
     record AccountOpened(UUID accountId, UUID customerId, BigDecimal annualRate) implements AccountEvent {
     }
 
-    record MoneyDeposited(UUID accountId, String paymentId, Money amount, Money balance) implements AccountEvent {
+    record MoneyDeposited(UUID accountId, String transferId, Money amount, Money balance) implements AccountEvent {
     }
 
-    record FundsReserved(UUID accountId, String requestId, Money amount, Money availableBalance)
+    record MoneyWithdrawn(UUID accountId, String transferId, Money amount, Money balance) implements AccountEvent {
+    }
+
+    record WithdrawalRejected(UUID accountId, String transferId, Money amount, RejectionReason reason)
             implements AccountEvent {
     }
 
-    record WithdrawalRejected(UUID accountId, String requestId, Money amount, RejectionReason reason)
-            implements AccountEvent {
-    }
-
-    record MoneyWithdrawn(UUID accountId, String requestId, Money amount, Money balance) implements AccountEvent {
-    }
-
-    record FundsReleased(UUID accountId, String requestId, Money amount, ReleaseReason reason)
+    record WithdrawalReturned(UUID accountId, String transferId, Money amount, Money balance)
             implements AccountEvent {
     }
 
@@ -34,6 +30,4 @@ public sealed interface AccountEvent {
     }
 
     enum RejectionReason { INSUFFICIENT_FUNDS }
-
-    enum ReleaseReason { CANCELLED, EXPIRED }
 }

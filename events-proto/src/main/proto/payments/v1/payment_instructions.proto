@@ -8,9 +8,13 @@ import "google/protobuf/timestamp.proto";
 option java_multiple_files = true;
 option java_package = "com.example.events.payments.v1";
 
-// Topic: payments.savings-instructions.v1 (owned by the Payments team).
+// Topic: payments.savings-instructions.v1 (owned by the Payments team, which orchestrates transfers
+//        between a customer's current account and savings account).
 // Key:   account_id. Producers MUST key by account so that all instructions
 //        for one account land on one partition and are consumed in order.
+//
+// Savings only ever moves money to and from the customer's own current account. External payments
+// (SPEI, SEPA, cards) are made from the current account and never reach Savings.
 //
 // Evolution rules: additive only. Never change or reuse a field number;
 // reserve numbers of removed fields.
@@ -20,32 +24,28 @@ message PaymentInstruction {
   string account_id = 3;                       // UUID of the savings account
 
   oneof payload {
-    PaymentReceived payment_received = 10;
-    WithdrawalRequested withdrawal_requested = 11;
-    WithdrawalConfirmed withdrawal_confirmed = 12;
-    WithdrawalCancelled withdrawal_cancelled = 13;
+    TransferFromCurrentAccount transfer_from_current_account = 10;
+    TransferToCurrentAccount transfer_to_current_account = 11;
+    TransferReturned transfer_returned = 12;
   }
 }
 
-// An incoming transfer was received for the savings account.
-message PaymentReceived {
-  string payment_id = 1;
+// The current account has already been debited: credit the savings account.
+// Answered with MoneyDeposited.
+message TransferFromCurrentAccount {
+  string transfer_id = 1;                      // unique per transfer, chosen by Payments
   common.v1.Money amount = 2;
 }
 
-// Phase 1: the customer wants to move money out. Savings answers with
-// FundsReserved or WithdrawalRejected.
-message WithdrawalRequested {
-  string request_id = 1;
+// Move money to the current account. Savings debits immediately if the balance allows it.
+// Answered with MoneyWithdrawn (then Payments credits the current account) or WithdrawalRejected.
+message TransferToCurrentAccount {
+  string transfer_id = 1;
   common.v1.Money amount = 2;
 }
 
-// Phase 2a: the outgoing transfer was executed. Money has left the bank.
-message WithdrawalConfirmed {
-  string request_id = 1;
-}
-
-// Phase 2b: the outgoing transfer failed or was aborted.
-message WithdrawalCancelled {
-  string request_id = 1;
+// Compensation: the current account could not be credited for an earlier TransferToCurrentAccount
+// (e.g. it was closed). Savings credits the money back. Answered with WithdrawalReturned.
+message TransferReturned {
+  string transfer_id = 1;
 }

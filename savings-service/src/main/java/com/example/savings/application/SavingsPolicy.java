@@ -1,13 +1,11 @@
 package com.example.savings.application;
 
-import java.time.Duration;
 import java.time.ZoneId;
 
 /**
  * Business settings.
  *
- * @param businessZone time zone that defines a calendar day for interest accrual
- * @param holdTtl      how long reserved funds wait for a confirmation before they are released
+ * @param businessZone time zone that defines a calendar day for interest accrual and value dates
  */
-public record SavingsPolicy(ZoneId businessZone, Duration holdTtl) {
+public record SavingsPolicy(ZoneId businessZone) {
 }

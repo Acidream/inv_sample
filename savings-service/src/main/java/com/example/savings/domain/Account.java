@@ -38,10 +38,6 @@ public class Account {
     @Column(nullable = false, precision = 19, scale = 2)
     private BigDecimal balance;
 
-    /** Sum of all RESERVED holds. available = balance - heldAmount. */
-    @Column(nullable = false, precision = 19, scale = 2)
-    private BigDecimal heldAmount;
-
     /** Interest earned but not yet paid out, sub-cent precision. */
     @Column(nullable = false, precision = 19, scale = Interest.ACCRUAL_SCALE)
     private BigDecimal accruedInterest;
@@ -69,7 +65,6 @@ public class Account {
         account.customerId = customerId;
         account.annualRate = annualRate.setScale(4, RoundingMode.UNNECESSARY);
         account.balance = Money.ZERO.amount();
-        account.heldAmount = Money.ZERO.amount();
         account.accruedInterest = BigDecimal.ZERO.setScale(Interest.ACCRUAL_SCALE);
         account.lastAccrualDate = LocalDate.ofInstant(now, zone).minusDays(1);
         account.openedAt = now;
@@ -78,42 +73,32 @@ public class Account {
 
     // --- money in -----------------------------------------------------------------------------
 
-    public LedgerEntry deposit(Money amount, String paymentId, Instant now) {
-        return book(EntryType.DEPOSIT, amount.requirePositive(), paymentId, now);
+    public LedgerEntry deposit(Money amount, String transferId, Instant now) {
+        return book(EntryType.DEPOSIT, amount.requirePositive(), transferId, now);
     }
 
-    // --- money out (two-phase) ----------------------------------------------------------------
-
-    public boolean canReserve(Money amount) {
-        return availableBalance().compareTo(amount) >= 0;
+    /** A withdrawal the current account refused comes back. */
+    public LedgerEntry creditReturnedWithdrawal(Money amount, String transferId, Instant now) {
+        return book(EntryType.WITHDRAWAL_RETURN, amount.requirePositive(), transferId, now);
     }
 
-    /** Phase 1: earmark funds. They still belong to the customer (and still earn interest). */
-    public void reserve(Money amount) {
-        amount.requirePositive();
-        if (!canReserve(amount)) {
-            throw new IllegalStateException("Insufficient available balance on account " + id);
-        }
-        heldAmount = heldAmount().plus(amount).amount();
-    }
+    // --- money out ----------------------------------------------------------------------------
 
-    /** Phase 2b or expiry: give earmarked funds back. */
-    public void releaseHold(Money amount) {
-        heldAmount = heldAmount().minus(amount).amount();
-    }
-
-    /** Phase 2a: the transfer happened, turn the hold into a real debit. */
-    public LedgerEntry settleHold(Money amount, String requestId, Instant now) {
-        releaseHold(amount);
-        return book(EntryType.WITHDRAWAL, amount.negate(), requestId, now);
+    public boolean canWithdraw(Money amount) {
+        return balance().compareTo(amount) >= 0;
     }
 
     /**
-     * A confirmation arrived after the hold had already expired. The money has left the bank, so
-     * it is booked unconditionally, even if that overdraws the account.
+     * Debits at once: money only ever goes to the customer's own current account, an internal
+     * transfer with a known outcome, so nothing has to be reserved while waiting for the outside world.
+     * The balance can never go negative.
      */
-    public LedgerEntry debitAfterExpiredHold(Money amount, String requestId, Instant now) {
-        return book(EntryType.WITHDRAWAL, amount.negate(), requestId, now);
+    public LedgerEntry withdraw(Money amount, String transferId, Instant now) {
+        amount.requirePositive();
+        if (!canWithdraw(amount)) {
+            throw new IllegalStateException("Insufficient balance on account " + id + " for " + amount);
+        }
+        return book(EntryType.WITHDRAWAL, amount.negate(), transferId, now);
     }
 
     // --- interest -----------------------------------------------------------------------------
@@ -168,14 +153,6 @@ public class Account {
 
     public Money balance() {
         return new Money(balance);
-    }
-
-    public Money heldAmount() {
-        return new Money(heldAmount);
-    }
-
-    public Money availableBalance() {
-        return balance().minus(heldAmount());
     }
 
     public BigDecimal accruedInterest() {

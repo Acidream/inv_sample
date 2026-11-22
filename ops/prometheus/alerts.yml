@@ -1,15 +1,6 @@
 groups:
   - name: savings
     rules:
-      - alert: SavingsAccountOverdrawn
-        # A late withdrawal confirmation was booked after its hold had expired and the funds were
-        # spent again. Money is owed by the customer: operations must follow up.
-        expr: increase(savings_negative_balance_total[10m]) > 0
-        labels:
-          severity: page
-        annotations:
-          summary: "A savings account was overdrawn by a late withdrawal confirmation"
-
       - alert: SavingsInstructionDeadLettered
         # An instruction from Payments could not be applied and was parked on the dead-letter topic.
         # Nothing is lost, but the money is not where Payments believes it is until someone inspects,

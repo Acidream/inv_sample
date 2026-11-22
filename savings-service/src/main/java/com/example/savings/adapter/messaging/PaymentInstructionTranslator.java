@@ -1,10 +1,9 @@
 package com.example.savings.adapter.messaging;
 
 import com.example.events.payments.v1.PaymentInstruction;
-import com.example.savings.application.PaymentInstruction.CancelWithdrawal;
-import com.example.savings.application.PaymentInstruction.ConfirmWithdrawal;
-import com.example.savings.application.PaymentInstruction.Deposit;
-import com.example.savings.application.PaymentInstruction.RequestWithdrawal;
+import com.example.savings.application.PaymentInstruction.ReturnTransfer;
+import com.example.savings.application.PaymentInstruction.TransferIn;
+import com.example.savings.application.PaymentInstruction.TransferOut;
 import com.example.savings.domain.Money;
 import java.util.UUID;
 
@@ -22,20 +21,18 @@ final class PaymentInstructionTranslator {
         var eventId = required(message.getEventId(), "event_id");
         var accountId = UUID.fromString(required(message.getAccountId(), "account_id"));
         return switch (message.getPayloadCase()) {
-            case PAYMENT_RECEIVED -> {
-                var payment = message.getPaymentReceived();
-                yield new Deposit(eventId, accountId, required(payment.getPaymentId(), "payment_id"),
-                        money(payment.getAmount()));
+            case TRANSFER_FROM_CURRENT_ACCOUNT -> {
+                var transfer = message.getTransferFromCurrentAccount();
+                yield new TransferIn(eventId, accountId, required(transfer.getTransferId(), "transfer_id"),
+                        money(transfer.getAmount()));
             }
-            case WITHDRAWAL_REQUESTED -> {
-                var request = message.getWithdrawalRequested();
-                yield new RequestWithdrawal(eventId, accountId, required(request.getRequestId(), "request_id"),
-                        money(request.getAmount()));
+            case TRANSFER_TO_CURRENT_ACCOUNT -> {
+                var transfer = message.getTransferToCurrentAccount();
+                yield new TransferOut(eventId, accountId, required(transfer.getTransferId(), "transfer_id"),
+                        money(transfer.getAmount()));
             }
-            case WITHDRAWAL_CONFIRMED -> new ConfirmWithdrawal(eventId, accountId,
-                    required(message.getWithdrawalConfirmed().getRequestId(), "request_id"));
-            case WITHDRAWAL_CANCELLED -> new CancelWithdrawal(eventId, accountId,
-                    required(message.getWithdrawalCancelled().getRequestId(), "request_id"));
+            case TRANSFER_RETURNED -> new ReturnTransfer(eventId, accountId,
+                    required(message.getTransferReturned().getTransferId(), "transfer_id"));
             case PAYLOAD_NOT_SET -> throw new IllegalArgumentException("Message " + eventId + " has no payload");
         };
     }

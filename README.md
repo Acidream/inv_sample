@@ -1,7 +1,7 @@
 # savings-platform
 
 A savings-account service in an event-driven architecture: accounts are opened over REST, money
-moves in and out through instructions from a Payments team on Kafka, interest accrues daily and is
+moves in from and out to the customer's current account through instructions from a Payments team on Kafka, interest accrues daily and is
 paid monthly. Built to be **correct and auditable** first, and as simple as that allows.
 
 Java 25 · Spring Boot 4.2 · Hibernate 7 · Flyway · PostgreSQL 17 · Kafka 4 · Protobuf ·
@@ -17,35 +17,46 @@ Checkstyle · GitHub Actions
 ```mermaid
 flowchart LR
     Client -- "REST: open account,<br/>balance, statement" --> S
-    P[Payments team] -- "payments.savings-instructions.v1<br/>PaymentReceived · WithdrawalRequested<br/>WithdrawalConfirmed · WithdrawalCancelled" --> S
+    P[Payments team] -- "payments.savings-instructions.v1<br/>TransferFromCurrentAccount · TransferToCurrentAccount<br/>TransferReturned" --> S
     subgraph S [savings-service]
         direction TB
-        UC[use cases] --> DB[(Postgres<br/>accounts · holds · ledger<br/>outbox · processed events · deposits)]
-        J[nightly jobs<br/>interest · hold expiry] --> UC
+        UC[use cases] --> DB[(Postgres<br/>accounts · transfers · ledger<br/>outbox · processed events)]
+        J[nightly job<br/>interest] --> UC
         R[outbox relay] --> DB
     end
-    R -- "savings.account-events.v1<br/>AccountOpened · MoneyDeposited · FundsReserved<br/>WithdrawalRejected · MoneyWithdrawn · FundsReleased · InterestPaid" --> C[other teams]
+    R -- "savings.account-events.v1<br/>AccountOpened · MoneyDeposited · MoneyWithdrawn<br/>WithdrawalRejected · WithdrawalReturned · InterestPaid" --> C[other teams]
     R -- "savings.postings.v1<br/>balanced double-entry postings" --> F[Finance / general ledger]
     S -. metrics .-> Prom[Prometheus / Grafana]
 ```
 
-- **Deposits** are credited when Payments reports a received transfer.
-- **Withdrawals** are two-phase: reserve funds (a *hold*), then settle when Payments confirms the
-  transfer or release when it cancels. Unanswered holds expire after 72 h; a confirmation that
-  arrives after that is still booked, because the money has already left the bank.
+- **Money only moves between savings and the customer's own current account.** External payments
+  are the current account's business, so every transfer has a known outcome at once.
+- **Deposits** are credited when Payments reports that the current account was debited.
+- **Withdrawals** are debited immediately if the balance allows it, otherwise rejected. If the
+  current account then refuses the money, Payments sends a return and Savings credits it back.
+  The balance can never go negative.
 - **Interest**: ACT/365 on each day's closing balance, accrued nightly with sub-cent precision,
   credited monthly rounded half-even, with the remainder carried over.
 - **Bookkeeping for Finance**: every booking and every daily accrual is also published as a balanced
-  double-entry posting (customer, payments clearing, interest expense, interest payable), so the
+  double-entry posting (customer, transfer clearing, interest expense, interest payable), so the
   bank's general ledger can be kept and reconciled from it.
 
 ```mermaid
-stateDiagram-v2
-    [*] --> RESERVED: WithdrawalRequested<br/>(available ≥ amount)
-    RESERVED --> SETTLED: WithdrawalConfirmed
-    RESERVED --> RELEASED: WithdrawalCancelled
-    RESERVED --> EXPIRED: no answer for 72 h
-    EXPIRED --> SETTLED: late WithdrawalConfirmed<br/>(booked anyway, may overdraw → alert)
+sequenceDiagram
+    participant P as Payments
+    participant S as Savings
+    participant C as Current account
+    P->>S: TransferToCurrentAccount
+    alt balance suffices
+        S-->>P: MoneyWithdrawn (debited at once)
+        P->>C: credit
+        opt current account refuses
+            P->>S: TransferReturned
+            S-->>P: WithdrawalReturned (credited back)
+        end
+    else
+        S-->>P: WithdrawalRejected
+    end
 ```
 
 ## Where the interesting decisions are
@@ -56,9 +67,9 @@ stateDiagram-v2
 | Auditability | Append-only ledger with `balance_after`; daily accrual rows | [0004](docs/adr/0004-money-and-append-only-ledger.md), [0010](docs/adr/0010-interest-accrual-and-payout.md) |
 | Books that balance | Every booking published as a double-entry posting, balanced by construction, value-dated | [0014](docs/adr/0014-double-entry-postings-for-finance.md) |
 | No lost or phantom events | Transactional outbox, single ordered relay | [0006](docs/adr/0006-transactional-outbox.md) |
-| At-least-once delivery | De-duplication by message id and by payment/request id in the business transaction; retries; alerted dead-letter topic; what Payments must do so nothing is lost | [0007](docs/adr/0007-idempotent-consumer-and-dead-letters.md) |
+| At-least-once delivery | De-duplication by message id and by transfer id in the business transaction; retries; alerted dead-letter topic; what Payments must do so nothing is lost | [0007](docs/adr/0007-idempotent-consumer-and-dead-letters.md) |
 | Concurrency | Per-account ordering via partition key, `@Version` optimistic locking, DB constraints | [0008](docs/adr/0008-ordering-and-concurrency.md) |
-| Distributed workflow | Holds with expiry and the late-confirmation rule | [0009](docs/adr/0009-two-phase-withdrawals.md) |
+| Distributed workflow | Transfers with the current account as a saga with one compensating step; why no holds | [0015](docs/adr/0015-transfers-only-with-the-current-account.md) |
 | Big tables | Monthly partitions, one composite index, keyset pagination | [0011](docs/adr/0011-ledger-partitioning-and-keyset-pagination.md) |
 | Contracts | Protobuf envelope with `oneof`, additive evolution, anti-corruption layer | [0005](docs/adr/0005-protobuf-event-contracts.md) |
 | Architecture | Hexagonal layers, enforced by ArchUnit | [0003](docs/adr/0003-hexagonal-layers-with-jpa-on-the-domain.md) |
@@ -73,7 +84,7 @@ All decisions: [docs/adr](docs/adr/README.md) · Vocabulary: [docs/GLOSSARY.md](
 ```
 events-proto/         Protobuf contracts (inbound from Payments, outbound account events)
 savings-service/      the service
-  domain/             Account, Hold, LedgerEntry, Money, Interest: plain Java, no Spring
+  domain/             Account, Transfer, LedgerEntry, Posting, Money, Interest: plain Java, no Spring
   application/        use cases and the ports they need
   adapter/            web · messaging · persistence · scheduling · metrics
   resources/db/       Flyway migrations
@@ -88,11 +99,10 @@ docs/                 ADRs and glossary
 The acceptance features are the best entry point into the behaviour:
 
 - [accounts.feature](savings-service/src/test/resources/acceptance/accounts.feature): opening, validation, problem details
-- [deposits.feature](savings-service/src/test/resources/acceptance/deposits.feature): crediting, redelivery and re-sent payments applied once, reused payment id → DLT, paginated statement
-- [withdrawals.feature](savings-service/src/test/resources/acceptance/withdrawals.feature): reserve/confirm/cancel, rejection, contract violation → DLT
-- [hold-expiry.feature](savings-service/src/test/resources/acceptance/hold-expiry.feature): 72 h expiry, late confirmation that overdraws
+- [deposits.feature](savings-service/src/test/resources/acceptance/deposits.feature): crediting, redelivery and re-sent transfers applied once, reused transfer id → DLT, paginated statement
+- [withdrawals.feature](savings-service/src/test/resources/acceptance/withdrawals.feature): immediate debit, rejection, no double spend, return once, contract violations → DLT
 - [interest.feature](savings-service/src/test/resources/acceptance/interest.feature): monthly payout, catch-up from closing balances, carried remainders
-- [postings.feature](savings-service/src/test/resources/acceptance/postings.feature): double-entry postings for deposits, withdrawals, daily accruals and payouts
+- [postings.feature](savings-service/src/test/resources/acceptance/postings.feature): double-entry postings for deposits, withdrawals and returns, daily accruals and payouts
 
 ## Running it locally
 
@@ -115,8 +125,8 @@ ACCOUNT=$(curl -s -X POST localhost:8080/accounts -H 'Content-Type: application/
   -d '{"customerId":"3f2b8c1a-5d4e-4f6a-9b7c-1a2b3c4d5e6f","annualRate":0.025}' | jq -r .id)
 
 ./gradlew -q :payments-simulator:run --args="deposit  $ACCOUNT 250.00"
-./gradlew -q :payments-simulator:run --args="withdraw $ACCOUNT 100.00"     # prints requestId=...
-./gradlew -q :payments-simulator:run --args="confirm  $ACCOUNT <requestId>"
+./gradlew -q :payments-simulator:run --args="withdraw $ACCOUNT 100.00"     # prints transferId=...
+./gradlew -q :payments-simulator:run --args="return   $ACCOUNT <transferId>"   # current account refused it
 
 curl -s localhost:8080/accounts/$ACCOUNT
 curl -s localhost:8080/accounts/$ACCOUNT/transactions

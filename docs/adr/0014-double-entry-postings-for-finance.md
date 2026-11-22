@@ -10,7 +10,7 @@ need both sides of every movement. Savings is a sub-ledger; the general ledger (
 Finance and has to reconcile with it every day.
 
 Account events (`savings.account-events.v1`) don't do this job well:
-- they describe customer-facing facts, not bookings, and holds produce events but aren't bookings;
+- they describe customer-facing facts, not bookings (a rejected withdrawal is an event, not a booking);
 - daily interest accruals aren't published at all, yet accrual accounting needs the interest expense
   in the period it was earned, not only when it is paid out;
 - a GL service deriving postings from them would have to re-implement savings rules.
@@ -22,11 +22,12 @@ Account events (`savings.account-events.v1`) don't do this job well:
 
 | Booking | Debit | Credit |
 |---|---|---|
-| Deposit | `payments-clearing` | `customer:<id>` |
-| Withdrawal settled (also a late confirmation) | `customer:<id>` | `payments-clearing` |
+| Deposit | `transfer-clearing` | `customer:<id>` |
+| Withdrawal | `customer:<id>` | `transfer-clearing` |
+| Returned withdrawal | `transfer-clearing` | `customer:<id>` |
 | Daily interest accrual (sub-cent) | `interest-expense` | `interest-payable` |
 | Monthly interest payout (cents) | `interest-payable` | `customer:<id>` |
-| Hold reserved, released, expired | no posting: no money moved | |
+| Rejected withdrawal | no posting: no money moved | |
 
 - **Balanced by construction.** `domain.Posting` can't be built unless debits equal credits; lines
   carry positive amounts and a side. The acceptance hooks re-check every published posting.
@@ -45,7 +46,7 @@ Account events (`savings.account-events.v1`) don't do this job well:
 ## Alternatives considered
 
 - **Finance derives postings from account events.** Savings stays unaware of accounting, but the
-  accounting meaning of savings behaviour (holds aren't bookings, late confirmations are, accruals
+  accounting meaning of savings behaviour (rejections aren't bookings, returns are, accruals
   exist) would live in another team's code, and accrual events would have to be added anyway.
 - **Full double-entry ledger inside Savings** (a journal table as the source of truth, customer
   balances derived from it). The textbook core-banking design; more than one product needs. Here the
@@ -65,5 +66,5 @@ Account events (`savings.account-events.v1`) don't do this job well:
   for Finance to reconcile against. They need a clean cut-off, i.e. the ledger's `balance_after` at
   midnight per account, not a snapshot of `account.balance` taken while bookings continue.
 - Corrections stay additive: a reversal is a new posting with the sides swapped, never an update.
-- Verified by `postings.feature` (deposit, settled withdrawal with holds producing nothing, daily
+- Verified by `postings.feature` (deposit, withdrawal and its return, a rejection producing nothing, daily
   accruals with value dates, payout) and `PostingTest`.

@@ -2,7 +2,7 @@ package com.example.savings.domain;
 
 import static com.example.savings.domain.BookAccount.INTEREST_EXPENSE;
 import static com.example.savings.domain.BookAccount.INTEREST_PAYABLE;
-import static com.example.savings.domain.BookAccount.PAYMENTS_CLEARING;
+import static com.example.savings.domain.BookAccount.TRANSFER_CLEARING;
 import static com.example.savings.domain.PostingLine.credit;
 import static com.example.savings.domain.PostingLine.debit;
 
@@ -32,7 +32,8 @@ public record Posting(UUID accountId, Type type, String reference, LocalDate val
         DEPOSIT,
         WITHDRAWAL,
         INTEREST_ACCRUAL,
-        INTEREST_PAYOUT
+        INTEREST_PAYOUT,
+        WITHDRAWAL_RETURN
     }
 
     public Posting {
@@ -51,16 +52,18 @@ public record Posting(UUID accountId, Type type, String reference, LocalDate val
         }
     }
 
-    /** The bank-wide side of a customer booking. Holds are not bookings and never get here. */
+    /** The bank-wide side of a customer booking. */
     public static Posting of(LedgerEntry entry, ZoneId businessZone) {
         var customer = BookAccount.customer(entry.accountId());
         var amount = entry.amount().amount().abs();
         var valueDate = LocalDate.ofInstant(entry.bookedAt(), businessZone);
         return switch (entry.type()) {
             case DEPOSIT -> new Posting(entry.accountId(), Type.DEPOSIT, entry.reference(), valueDate,
-                    entry.bookedAt(), List.of(debit(PAYMENTS_CLEARING, amount), credit(customer, amount)));
+                    entry.bookedAt(), List.of(debit(TRANSFER_CLEARING, amount), credit(customer, amount)));
             case WITHDRAWAL -> new Posting(entry.accountId(), Type.WITHDRAWAL, entry.reference(), valueDate,
-                    entry.bookedAt(), List.of(debit(customer, amount), credit(PAYMENTS_CLEARING, amount)));
+                    entry.bookedAt(), List.of(debit(customer, amount), credit(TRANSFER_CLEARING, amount)));
+            case WITHDRAWAL_RETURN -> new Posting(entry.accountId(), Type.WITHDRAWAL_RETURN, entry.reference(),
+                    valueDate, entry.bookedAt(), List.of(debit(TRANSFER_CLEARING, amount), credit(customer, amount)));
             case INTEREST -> new Posting(entry.accountId(), Type.INTEREST_PAYOUT, entry.reference(), valueDate,
                     entry.bookedAt(), List.of(debit(INTEREST_PAYABLE, amount), credit(customer, amount)));
         };

@@ -6,44 +6,49 @@ Feature: Every booking reaches Finance as a balanced double-entry posting
   Background:
     * url baseUrl
 
-  Scenario: a deposit moves money from payments clearing to the customer
+  Scenario: a deposit moves money from transfer clearing to the customer
     * hooks.resetClock()
     * def opened = call read('common.feature') { rate: 0.02 }
     * def accountId = opened.accountId
-    * def paymentId = 'pay-' + hooks.uuid()
-    * hooks.depositPayment(accountId, paymentId, '100.00')
+    * def transferId = 'tr-' + hooks.uuid()
+    * hooks.depositTransfer(accountId, transferId, '100.00')
     * def posting = hooks.awaitPosting(accountId, 'DEPOSIT')
-    * match posting contains { reference: '#(paymentId)', currency: 'EUR', postingId: '#uuid' }
+    * match posting contains { reference: '#(transferId)', currency: 'EUR', postingId: '#uuid' }
     * match posting.lines ==
       """
       [
-        { bookAccount: 'payments-clearing',     side: 'DEBIT',  amount: '100.00' },
+        { bookAccount: 'transfer-clearing',     side: 'DEBIT',  amount: '100.00' },
         { bookAccount: '#("customer:" + accountId)', side: 'CREDIT', amount: '100.00' }
       ]
       """
 
-  Scenario: holds are not bookings; a settled withdrawal moves money from the customer to clearing
+  Scenario: a withdrawal moves money from the customer to clearing, and a return moves it back
     * hooks.resetClock()
     * def opened = call read('common.feature') { rate: 0.02 }
     * def accountId = opened.accountId
     * hooks.deposit(accountId, '100.00')
     * def ignored = hooks.awaitPosting(accountId, 'DEPOSIT')
-    # Reserved and cancelled: no posting at all
-    * def cancelledId = hooks.requestWithdrawal(accountId, '30.00')
-    * def ignored = hooks.awaitEvent(accountId, 'FUNDS_RESERVED')
-    * hooks.cancelWithdrawal(accountId, cancelledId)
-    * def ignored = hooks.awaitEvent(accountId, 'FUNDS_RELEASED')
-    # Reserved and confirmed: one posting, when the money actually leaves
-    * def requestId = hooks.requestWithdrawal(accountId, '40.00')
-    * def ignored = hooks.awaitEvent(accountId, 'FUNDS_RESERVED')
-    * hooks.confirmWithdrawal(accountId, requestId)
+    # A rejected withdrawal moves no money and is not posted
+    * def rejectedId = hooks.withdraw(accountId, '500.00')
+    * def ignored = hooks.awaitEvent(accountId, 'WITHDRAWAL_REJECTED')
+    * def transferId = hooks.withdraw(accountId, '40.00')
     * def posting = hooks.awaitPosting(accountId, 'WITHDRAWAL')
-    * match posting.reference == requestId
+    * match posting.reference == transferId
     * match posting.lines ==
       """
       [
         { bookAccount: '#("customer:" + accountId)', side: 'DEBIT',  amount: '40.00' },
-        { bookAccount: 'payments-clearing',     side: 'CREDIT', amount: '40.00' }
+        { bookAccount: 'transfer-clearing',     side: 'CREDIT', amount: '40.00' }
+      ]
+      """
+    * hooks.returnTransfer(accountId, transferId)
+    * def returned = hooks.awaitPosting(accountId, 'WITHDRAWAL_RETURN')
+    * match returned.reference == transferId
+    * match returned.lines ==
+      """
+      [
+        { bookAccount: 'transfer-clearing',     side: 'DEBIT',  amount: '40.00' },
+        { bookAccount: '#("customer:" + accountId)', side: 'CREDIT', amount: '40.00' }
       ]
       """
 

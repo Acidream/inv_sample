@@ -2,7 +2,7 @@ package com.example.savings.domain;
 
 import static com.example.savings.domain.BookAccount.INTEREST_EXPENSE;
 import static com.example.savings.domain.BookAccount.INTEREST_PAYABLE;
-import static com.example.savings.domain.BookAccount.PAYMENTS_CLEARING;
+import static com.example.savings.domain.BookAccount.TRANSFER_CLEARING;
 import static com.example.savings.domain.PostingLine.credit;
 import static com.example.savings.domain.PostingLine.debit;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -24,7 +24,7 @@ class PostingTest {
     private static final Instant NOON = Instant.parse("2026-03-02T11:00:00Z");
 
     @Test
-    void depositMovesMoneyFromClearingToTheCustomer() {
+    void depositMovesMoneyFromTransferClearingToTheCustomer() {
         var entry = new LedgerEntry(ACCOUNT, EntryType.DEPOSIT, Money.of("100.00"), Money.of("100.00"), "pay-1", NOON);
 
         var posting = Posting.of(entry, BERLIN);
@@ -32,7 +32,7 @@ class PostingTest {
         assertThat(posting.type()).isEqualTo(Posting.Type.DEPOSIT);
         assertThat(posting.reference()).isEqualTo("pay-1");
         assertThat(posting.lines()).containsExactly(
-                debit(PAYMENTS_CLEARING, new BigDecimal("100.00")), credit(CUSTOMER, new BigDecimal("100.00")));
+                debit(TRANSFER_CLEARING, new BigDecimal("100.00")), credit(CUSTOMER, new BigDecimal("100.00")));
     }
 
     @Test
@@ -44,7 +44,19 @@ class PostingTest {
 
         assertThat(posting.type()).isEqualTo(Posting.Type.WITHDRAWAL);
         assertThat(posting.lines()).containsExactly(
-                debit(CUSTOMER, new BigDecimal("40.00")), credit(PAYMENTS_CLEARING, new BigDecimal("40.00")));
+                debit(CUSTOMER, new BigDecimal("40.00")), credit(TRANSFER_CLEARING, new BigDecimal("40.00")));
+    }
+
+    @Test
+    void aReturnedWithdrawalMovesTheMoneyBackToTheCustomer() {
+        var entry = new LedgerEntry(ACCOUNT, EntryType.WITHDRAWAL_RETURN, Money.of("40.00"), Money.of("100.00"),
+                "wd-1", NOON);
+
+        var posting = Posting.of(entry, BERLIN);
+
+        assertThat(posting.type()).isEqualTo(Posting.Type.WITHDRAWAL_RETURN);
+        assertThat(posting.lines()).containsExactly(
+                debit(TRANSFER_CLEARING, new BigDecimal("40.00")), credit(CUSTOMER, new BigDecimal("40.00")));
     }
 
     @Test
@@ -85,7 +97,7 @@ class PostingTest {
     @Test
     void anUnbalancedPostingCannotBeBuilt() {
         assertThatIllegalArgumentException()
-                .isThrownBy(() -> posting(debit(PAYMENTS_CLEARING, new BigDecimal("100.00")),
+                .isThrownBy(() -> posting(debit(TRANSFER_CLEARING, new BigDecimal("100.00")),
                         credit(CUSTOMER, new BigDecimal("99.99"))))
                 .withMessageContaining("Unbalanced");
     }
@@ -104,7 +116,7 @@ class PostingTest {
 
     @Test
     void balanceIsCheckedAcrossMoreThanTwoLines() {
-        var posting = posting(debit(PAYMENTS_CLEARING, new BigDecimal("10.00")),
+        var posting = posting(debit(TRANSFER_CLEARING, new BigDecimal("10.00")),
                 credit(CUSTOMER, new BigDecimal("7.50")), credit(INTEREST_PAYABLE, new BigDecimal("2.5")));
 
         assertThat(posting.lines()).hasSize(3);

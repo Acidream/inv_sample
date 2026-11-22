@@ -14,6 +14,7 @@ must be strongly typed, evolvable without lock-step deployments, and preserve pe
 | `payments.savings-instructions.v1` | Payments | `PaymentInstruction` | account id |
 | `payments.savings-instructions.v1.DLT` | Savings | original bytes + error headers | account id |
 | `savings.account-events.v1` | Savings | `AccountEvent` | account id |
+| `savings.postings.v1` | Savings (for Finance) | `Posting` | account id |
 
 - One **envelope** per topic: `event_id`, `occurred_at`, `account_id` and a `oneof payload`. One topic
   per stream (not per event type), so all events of an account are totally ordered on one partition.
@@ -31,7 +32,7 @@ must be strongly typed, evolvable without lock-step deployments, and preserve pe
   many schemas; it enforces the evolution rules at produce time. Here the shared `events-proto`
   library is the registry, and the next step would be `buf breaking` in CI.
 - **JSON events**: easier to read, but no schema, and floats tempt people.
-- **Topic per event type**: loses ordering between e.g. `FundsReserved` and `MoneyWithdrawn`.
+- **Topic per event type**: loses ordering between e.g. `MoneyWithdrawn` and `WithdrawalReturned`.
 
 ## Consequences
 

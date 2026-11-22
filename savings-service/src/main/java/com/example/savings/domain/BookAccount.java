@@ -9,14 +9,14 @@ import java.util.UUID;
  *
  * <ul>
  *   <li>{@code customer:<id>}: what the bank owes one customer (a liability).</li>
- *   <li>{@code payments-clearing}: money in transit to or from the Payments team.</li>
+ *   <li>{@code transfer-clearing}: money in transit between the current account and savings.</li>
  *   <li>{@code interest-expense}: what interest costs the bank (profit and loss).</li>
  *   <li>{@code interest-payable}: interest earned by customers but not yet credited (a liability).</li>
  * </ul>
  */
 public record BookAccount(String code) {
 
-    public static final BookAccount PAYMENTS_CLEARING = new BookAccount("payments-clearing");
+    public static final BookAccount TRANSFER_CLEARING = new BookAccount("transfer-clearing");
     public static final BookAccount INTEREST_EXPENSE = new BookAccount("interest-expense");
     public static final BookAccount INTEREST_PAYABLE = new BookAccount("interest-payable");
 

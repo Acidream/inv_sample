@@ -6,7 +6,7 @@ Date: 2026-11-22 · Status: Accepted
 
 JVM and HTTP metrics show that the service runs, not that money flows correctly. The failure modes
 that matter here are business-level: events stuck in the outbox, the consumer falling behind,
-overdrawn accounts.
+instructions that can't be applied.
 
 ## Decision
 
@@ -17,10 +17,9 @@ overdrawn accounts.
 | Metric | Type | Meaning |
 |---|---|---|
 | `savings_deposits_total`, `savings_deposits_amount_euros_total` | counter | Deposits and volume |
-| `savings_withdrawals_total{outcome}` | counter | reserved / rejected / settled / released / expired |
+| `savings_withdrawals_total{outcome}` | counter | withdrawn / rejected / returned |
 | `savings_interest_paid_euros_total` | counter | Interest credited |
-| `savings_negative_balance_total` | counter | Late confirmations that overdrew an account |
-| `savings_messages_duplicate_total` | counter | Redeliveries and re-sent payments skipped by the idempotent consumer |
+| `savings_messages_duplicate_total` | counter | Redeliveries and re-sent transfers skipped by the idempotent consumer |
 | `savings_messages_dead_lettered_total{topic}` | counter | Instructions parked on the dead-letter topic |
 | `savings_outbox_pending` | gauge | Events committed but not yet in Kafka |
 | `savings_outbox_published_total` | counter | Relay throughput |
@@ -28,11 +27,11 @@ overdrawn accounts.
 
 - docker-compose runs Prometheus with alert rules (`ops/prometheus/alerts.yml`) and Grafana with a
   provisioned dashboard (`ops/grafana/dashboards/savings.json`).
-- Alerts: **SavingsAccountOverdrawn** (page), **SavingsInstructionDeadLettered** (page),
+- Alerts: **SavingsInstructionDeadLettered** (page),
   **SavingsOutboxBacklog** (page), **SavingsConsumerLag** (warn).
 - Counters behind an `increase()` alert are registered at start-up with value 0. Micrometer creates
   a counter on first use, and Prometheus can't compute an increase for a series that jumps from
-  absent to 1, so the first overdrawn account or dead letter would never alert.
+  absent to 1, so the first dead letter would never alert.
 - Metric amounts are doubles. Fine for dashboards, never used for bookkeeping.
 
 ## Consequences

@@ -1,12 +1,11 @@
 package com.example.savings.adapter.messaging;
 
 import com.example.events.savings.v1.AccountOpened;
-import com.example.events.savings.v1.FundsReleased;
-import com.example.events.savings.v1.FundsReserved;
 import com.example.events.savings.v1.InterestPaid;
 import com.example.events.savings.v1.MoneyDeposited;
 import com.example.events.savings.v1.MoneyWithdrawn;
 import com.example.events.savings.v1.WithdrawalRejected;
+import com.example.events.savings.v1.WithdrawalReturned;
 import com.example.savings.domain.AccountEvent;
 import com.example.savings.domain.Money;
 import com.google.protobuf.Timestamp;
@@ -32,25 +31,21 @@ final class AccountEventMapper {
                     .setCustomerId(e.customerId().toString())
                     .setAnnualRate(e.annualRate().toPlainString()));
             case AccountEvent.MoneyDeposited e -> envelope.setMoneyDeposited(MoneyDeposited.newBuilder()
-                    .setPaymentId(e.paymentId())
+                    .setTransferId(e.transferId())
                     .setAmount(money(e.amount()))
                     .setBalance(money(e.balance())));
-            case AccountEvent.FundsReserved e -> envelope.setFundsReserved(FundsReserved.newBuilder()
-                    .setRequestId(e.requestId())
+            case AccountEvent.MoneyWithdrawn e -> envelope.setMoneyWithdrawn(MoneyWithdrawn.newBuilder()
+                    .setTransferId(e.transferId())
                     .setAmount(money(e.amount()))
-                    .setAvailableBalance(money(e.availableBalance())));
+                    .setBalance(money(e.balance())));
             case AccountEvent.WithdrawalRejected e -> envelope.setWithdrawalRejected(WithdrawalRejected.newBuilder()
-                    .setRequestId(e.requestId())
+                    .setTransferId(e.transferId())
                     .setAmount(money(e.amount()))
                     .setReason(WithdrawalRejected.Reason.valueOf(e.reason().name())));
-            case AccountEvent.MoneyWithdrawn e -> envelope.setMoneyWithdrawn(MoneyWithdrawn.newBuilder()
-                    .setRequestId(e.requestId())
+            case AccountEvent.WithdrawalReturned e -> envelope.setWithdrawalReturned(WithdrawalReturned.newBuilder()
+                    .setTransferId(e.transferId())
                     .setAmount(money(e.amount()))
                     .setBalance(money(e.balance())));
-            case AccountEvent.FundsReleased e -> envelope.setFundsReleased(FundsReleased.newBuilder()
-                    .setRequestId(e.requestId())
-                    .setAmount(money(e.amount()))
-                    .setReason(FundsReleased.Reason.valueOf(e.reason().name())));
             case AccountEvent.InterestPaid e -> envelope.setInterestPaid(InterestPaid.newBuilder()
                     .setPeriod(e.period().toString())
                     .setAmount(money(e.amount()))

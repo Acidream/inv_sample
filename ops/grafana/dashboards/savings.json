@@ -21,12 +21,12 @@
       "targets": [{ "refId": "A", "expr": "sum by (outcome) (rate(savings_withdrawals_total[5m])) * 60", "legendFormat": "{{outcome}}" }]
     },
     {
-      "type": "stat", "title": "Overdrawn by late confirmation (24h)",
+      "type": "stat", "title": "Withdrawals returned by the current account (24h)",
       "gridPos": { "x": 16, "y": 1, "w": 8, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [
         { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } } },
-      "targets": [{ "refId": "A", "expr": "sum(increase(savings_negative_balance_total[24h])) or vector(0)" }]
+      "targets": [{ "refId": "A", "expr": "sum(increase(savings_withdrawals_total{outcome=\"returned\"}[24h])) or vector(0)" }]
     },
     {
       "type": "stat", "title": "Deposited (EUR, 24h)",

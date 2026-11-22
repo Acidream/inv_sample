@@ -4,7 +4,7 @@ Date: 2026-11-22 · Status: Accepted
 
 ## Context
 
-Business rules (money, holds, interest) must be testable without Spring, Kafka or a database, and
+Business rules (money, transfers, interest) must be testable without Spring, Kafka or a database, and
 easy to find. Full Clean Architecture (separate persistence models plus mappers for every entity)
 doubles the code without adding much for a service this size.
 
@@ -12,7 +12,7 @@ doubles the code without adding much for a service this size.
 
 ```
 com.example.savings
-├── domain        plain Java: Account, Hold, LedgerEntry, Money, Interest, AccountEvent
+├── domain        plain Java: Account, Transfer, LedgerEntry, Posting, Money, Interest, AccountEvent
 ├── application   use cases + ports (interfaces the use cases need)
 ├── adapter
 │   ├── web          REST controller, DTOs, problem details
@@ -40,5 +40,5 @@ com.example.savings
 
 ## Consequences
 
-- Domain tests are fast and dependency-free (`AccountTest`, `HoldTest`, `InterestTest`).
+- Domain tests are fast and dependency-free (`AccountTest`, `TransferTest`, `PostingTest`, `InterestTest`).
 - Replacing JPA with plain JDBC would mean writing persistence models, not changing use cases.

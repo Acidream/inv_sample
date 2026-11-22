@@ -1,41 +1,38 @@
 package com.example.savings.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import com.example.savings.application.PaymentInstruction.ConfirmWithdrawal;
-import com.example.savings.application.PaymentInstruction.Deposit;
-import com.example.savings.application.PaymentInstruction.RequestWithdrawal;
+import com.example.savings.application.PaymentInstruction.ReturnTransfer;
+import com.example.savings.application.PaymentInstruction.TransferIn;
+import com.example.savings.application.PaymentInstruction.TransferOut;
 import com.example.savings.application.port.AccountEventPublisher;
 import com.example.savings.application.port.Accounts;
-import com.example.savings.application.port.Deposits;
-import com.example.savings.application.port.Deposits.RecordedDeposit;
-import com.example.savings.application.port.Holds;
 import com.example.savings.application.port.ProcessedEvents;
 import com.example.savings.application.port.SavingsMetrics;
+import com.example.savings.application.port.Transfers;
 import com.example.savings.domain.Account;
-import com.example.savings.domain.AccountEvent;
-import com.example.savings.domain.AccountEvent.MoneyWithdrawn;
 import com.example.savings.domain.AccountEvent.RejectionReason;
 import com.example.savings.domain.AccountEvent.WithdrawalRejected;
-import com.example.savings.domain.Hold;
+import com.example.savings.domain.AccountEvent.WithdrawalReturned;
+import com.example.savings.domain.IllegalTransferException;
 import com.example.savings.domain.Money;
+import com.example.savings.domain.Transfer;
 import java.math.BigDecimal;
 import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
-import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -46,10 +43,9 @@ class PaymentInstructionHandlerTest {
     private static final Instant NOW = Instant.parse("2026-03-02T10:00:00Z");
 
     @Mock Accounts accounts;
-    @Mock Holds holds;
+    @Mock Transfers transfers;
     @Mock Bookkeeping bookkeeping;
     @Mock ProcessedEvents processedEvents;
-    @Mock Deposits deposits;
     @Mock AccountEventPublisher events;
     @Mock SavingsMetrics metrics;
 
@@ -58,9 +54,8 @@ class PaymentInstructionHandlerTest {
 
     @BeforeEach
     void setUp() {
-        var policy = new SavingsPolicy(ZoneId.of("Europe/Berlin"), Duration.ofHours(72));
-        handler = new PaymentInstructionHandler(accounts, holds, bookkeeping, processedEvents, deposits, events,
-                metrics, policy, Clock.fixed(NOW, ZoneOffset.UTC));
+        handler = new PaymentInstructionHandler(accounts, transfers, bookkeeping, processedEvents, events, metrics,
+                Clock.fixed(NOW, ZoneOffset.UTC));
         account = Account.open(UUID.randomUUID(), BigDecimal.ZERO, NOW, ZoneOffset.UTC);
     }
 
@@ -68,63 +63,34 @@ class PaymentInstructionHandlerTest {
     void duplicateMessageChangesNothing() {
         when(processedEvents.markProcessed("e1")).thenReturn(false);
 
-        handler.handle(new Deposit("e1", account.id(), "p1", Money.of("10.00")));
+        handler.handle(new TransferIn("e1", account.id(), "t1", Money.of("10.00")));
 
-        verifyNoInteractions(accounts, bookkeeping, events);
+        verifyNoInteractions(accounts, transfers, bookkeeping, events);
         verify(metrics).duplicateMessage();
     }
 
     @Test
     void insufficientFundsIsABusinessOutcomeNotAnError() {
         when(processedEvents.markProcessed("e1")).thenReturn(true);
-        when(holds.findByRequestId("wd-1")).thenReturn(Optional.empty());
         when(accounts.get(account.id())).thenReturn(account);
+        when(transfers.find("t1")).thenReturn(Optional.empty());
 
-        handler.handle(new RequestWithdrawal("e1", account.id(), "wd-1", Money.of("0.01")));
+        handler.handle(new TransferOut("e1", account.id(), "t1", Money.of("0.01")));
 
-        verify(events).publish(new WithdrawalRejected(account.id(), "wd-1", Money.of("0.01"),
+        verify(events).publish(new WithdrawalRejected(account.id(), "t1", Money.of("0.01"),
                 RejectionReason.INSUFFICIENT_FUNDS));
-        verify(holds, never()).add(any());
+        verify(bookkeeping, never()).book(any());
+        assertThat(account.balance()).isEqualTo(Money.ZERO);
     }
 
     @Test
-    void lateConfirmationThatOverdrawsIsBookedAndFlagged() {
-        account.deposit(Money.of("50.00"), "p1", NOW);
-        var hold = Hold.reserve(account.id(), "wd-1", Money.of("80.00"), NOW.minus(Duration.ofDays(4)),
-                Duration.ofHours(72));
-        hold.expire(NOW);
-        when(processedEvents.markProcessed("e2")).thenReturn(true);
-        when(holds.findByRequestId("wd-1")).thenReturn(Optional.of(hold));
-        when(accounts.get(account.id())).thenReturn(account);
-
-        handler.handle(new ConfirmWithdrawal("e2", account.id(), "wd-1"));
-
-        assertThat(account.balance()).isEqualTo(Money.of("-30.00"));
-        var published = ArgumentCaptor.forClass(AccountEvent.class);
-        verify(events).publish(published.capture());
-        assertThat(published.getValue()).isEqualTo(
-                new MoneyWithdrawn(account.id(), "wd-1", Money.of("80.00"), Money.of("-30.00")));
-        verify(metrics).negativeBalance();
-    }
-
-    @Test
-    void confirmationForAnotherAccountIsRejected() {
-        var hold = Hold.reserve(UUID.randomUUID(), "wd-1", Money.of("1.00"), NOW, Duration.ofHours(72));
-        when(processedEvents.markProcessed("e3")).thenReturn(true);
-        when(holds.findByRequestId("wd-1")).thenReturn(Optional.of(hold));
-
-        org.assertj.core.api.Assertions.assertThatIllegalArgumentException()
-                .isThrownBy(() -> handler.handle(new ConfirmWithdrawal("e3", account.id(), "wd-1")));
-    }
-
-    @Test
-    void paymentResentUnderNewMessageIdIsCreditedOnce() {
-        var earlier = new RecordedDeposit("p1", account.id(), Money.of("10.00"), "e1", NOW);
+    void transferResentUnderNewMessageIdIsAppliedOnce() {
         when(processedEvents.markProcessed("e2")).thenReturn(true);
         when(accounts.get(account.id())).thenReturn(account);
-        when(deposits.recordIfNew(any())).thenReturn(Optional.of(earlier));
+        when(transfers.find("t1")).thenReturn(Optional.of(Transfer.deposited("t1", account.id(), Money.of("10.00"),
+                NOW)));
 
-        handler.handle(new Deposit("e2", account.id(), "p1", Money.of("10.00")));
+        handler.handle(new TransferIn("e2", account.id(), "t1", Money.of("10.00")));
 
         assertThat(account.balance()).isEqualTo(Money.ZERO);
         verifyNoInteractions(bookkeeping, events);
@@ -132,15 +98,54 @@ class PaymentInstructionHandlerTest {
     }
 
     @Test
-    void paymentIdReusedForDifferentMoneyIsAContractViolation() {
-        var earlier = new RecordedDeposit("p1", account.id(), Money.of("10.00"), "e1", NOW);
+    void transferIdReusedForADifferentMovementIsAContractViolation() {
         when(processedEvents.markProcessed("e2")).thenReturn(true);
         when(accounts.get(account.id())).thenReturn(account);
-        when(deposits.recordIfNew(any())).thenReturn(Optional.of(earlier));
+        when(transfers.find("t1")).thenReturn(Optional.of(Transfer.deposited("t1", account.id(), Money.of("10.00"),
+                NOW)));
 
-        org.assertj.core.api.Assertions.assertThatIllegalArgumentException()
-                .isThrownBy(() -> handler.handle(new Deposit("e2", account.id(), "p1", Money.of("99.00"))))
-                .withMessageContaining("p1");
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> handler.handle(new TransferOut("e2", account.id(), "t1", Money.of("10.00"))))
+                .withMessageContaining("t1");
         verifyNoInteractions(bookkeeping, events);
+    }
+
+    @Test
+    void returnedWithdrawalIsCreditedBackOnce() {
+        account.deposit(Money.of("100.00"), "t0", NOW);
+        account.withdraw(Money.of("40.00"), "t1", NOW);
+        var transfer = Transfer.withdrawn("t1", account.id(), Money.of("40.00"), NOW);
+        when(processedEvents.markProcessed("e3")).thenReturn(true);
+        when(processedEvents.markProcessed("e4")).thenReturn(true);
+        when(transfers.find("t1")).thenReturn(Optional.of(transfer));
+        when(accounts.get(account.id())).thenReturn(account);
+
+        handler.handle(new ReturnTransfer("e3", account.id(), "t1"));
+        handler.handle(new ReturnTransfer("e4", account.id(), "t1"));
+
+        assertThat(account.balance()).isEqualTo(Money.of("100.00"));
+        verify(events).publish(new WithdrawalReturned(account.id(), "t1", Money.of("40.00"), Money.of("100.00")));
+        verify(metrics).duplicateMessage();
+    }
+
+    @Test
+    void returningARejectedWithdrawalIsAContractViolation() {
+        when(processedEvents.markProcessed("e3")).thenReturn(true);
+        when(transfers.find("t1")).thenReturn(Optional.of(Transfer.rejected("t1", account.id(), Money.of("40.00"),
+                NOW)));
+
+        assertThatThrownBy(() -> handler.handle(new ReturnTransfer("e3", account.id(), "t1")))
+                .isInstanceOf(IllegalTransferException.class);
+        verifyNoInteractions(bookkeeping, events);
+    }
+
+    @Test
+    void returnForAnotherAccountIsRejected() {
+        when(processedEvents.markProcessed("e3")).thenReturn(true);
+        when(transfers.find("t1")).thenReturn(Optional.of(Transfer.withdrawn("t1", UUID.randomUUID(),
+                Money.of("40.00"), NOW)));
+
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> handler.handle(new ReturnTransfer("e3", account.id(), "t1")));
     }
 }

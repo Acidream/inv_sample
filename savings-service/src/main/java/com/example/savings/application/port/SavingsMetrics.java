@@ -11,7 +11,5 @@ public interface SavingsMetrics {
 
     void interestPaid(Money amount);
 
-    void negativeBalance();
-
     void duplicateMessage();
 }

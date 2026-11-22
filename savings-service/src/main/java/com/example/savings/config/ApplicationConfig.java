@@ -24,7 +24,7 @@ class ApplicationConfig {
 
     @Bean
     SavingsPolicy savingsPolicy(SavingsProperties properties) {
-        return new SavingsPolicy(properties.businessZone(), properties.holdTtl());
+        return new SavingsPolicy(properties.businessZone());
     }
 
     /** Scheduled jobs run on one instance at a time; the lock lives in Postgres and uses DB time. */

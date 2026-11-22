@@ -28,12 +28,11 @@ final class AccountDtos {
     }
 
     record AccountResponse(UUID id, UUID customerId, String annualRate, String currency, String balance,
-            String heldAmount, String availableBalance, String accruedInterest, Instant openedAt) {
+            String accruedInterest, Instant openedAt) {
 
         static AccountResponse from(Account account) {
             return new AccountResponse(account.id(), account.customerId(), account.annualRate().toPlainString(),
-                    Money.CURRENCY, account.balance().toString(), account.heldAmount().toString(),
-                    account.availableBalance().toString(), account.accruedInterest().toPlainString(),
+                    Money.CURRENCY, account.balance().toString(), account.accruedInterest().toPlainString(),
                     account.openedAt());
         }
     }

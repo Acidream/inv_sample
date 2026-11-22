@@ -1,37 +1,39 @@
 package com.example.savings.application;
 
-import com.example.savings.application.PaymentInstruction.CancelWithdrawal;
-import com.example.savings.application.PaymentInstruction.ConfirmWithdrawal;
-import com.example.savings.application.PaymentInstruction.Deposit;
-import com.example.savings.application.PaymentInstruction.RequestWithdrawal;
+import com.example.savings.application.PaymentInstruction.ReturnTransfer;
+import com.example.savings.application.PaymentInstruction.TransferIn;
+import com.example.savings.application.PaymentInstruction.TransferOut;
 import com.example.savings.application.port.AccountEventPublisher;
 import com.example.savings.application.port.Accounts;
-import com.example.savings.application.port.Deposits;
-import com.example.savings.application.port.Deposits.RecordedDeposit;
-import com.example.savings.application.port.Holds;
 import com.example.savings.application.port.ProcessedEvents;
 import com.example.savings.application.port.SavingsMetrics;
-import com.example.savings.domain.AccountEvent.FundsReleased;
-import com.example.savings.domain.AccountEvent.FundsReserved;
+import com.example.savings.application.port.Transfers;
 import com.example.savings.domain.AccountEvent.MoneyDeposited;
 import com.example.savings.domain.AccountEvent.MoneyWithdrawn;
 import com.example.savings.domain.AccountEvent.RejectionReason;
-import com.example.savings.domain.AccountEvent.ReleaseReason;
 import com.example.savings.domain.AccountEvent.WithdrawalRejected;
-import com.example.savings.domain.Hold;
+import com.example.savings.domain.AccountEvent.WithdrawalReturned;
+import com.example.savings.domain.Money;
+import com.example.savings.domain.Transfer;
+import com.example.savings.domain.Transfer.Direction;
 import java.time.Clock;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Applies instructions from Payments. One instruction = one transaction that contains the
- * de-duplication markers, the state change, the ledger entry and the outgoing event (outbox).
- * Either all of it commits or none of it.
+ * Applies transfer instructions from Payments. One instruction = one transaction that contains the
+ * de-duplication markers, the balance change, the ledger entry, the posting and the outgoing event
+ * (outbox). Either all of it commits or none of it.
+ *
+ * <p>Money only moves to and from the customer's own current account, so every instruction has a
+ * known outcome at once: no holds, no waiting for the outside world, and the balance never goes
+ * negative.
  *
  * <p>De-duplication works on two levels: the message id catches redeliveries of the same message;
- * the business key (payment id, withdrawal request id) catches the same intent re-sent as a new message.
+ * the transfer id catches the same transfer re-sent as a new message.
  */
 @Service
 public class PaymentInstructionHandler {
@@ -39,26 +41,21 @@ public class PaymentInstructionHandler {
     private static final Logger log = LoggerFactory.getLogger(PaymentInstructionHandler.class);
 
     private final Accounts accounts;
-    private final Holds holds;
+    private final Transfers transfers;
     private final Bookkeeping bookkeeping;
     private final ProcessedEvents processedEvents;
-    private final Deposits deposits;
     private final AccountEventPublisher events;
     private final SavingsMetrics metrics;
-    private final SavingsPolicy policy;
     private final Clock clock;
 
-    public PaymentInstructionHandler(Accounts accounts, Holds holds, Bookkeeping bookkeeping,
-            ProcessedEvents processedEvents, Deposits deposits, AccountEventPublisher events, SavingsMetrics metrics,
-            SavingsPolicy policy, Clock clock) {
+    public PaymentInstructionHandler(Accounts accounts, Transfers transfers, Bookkeeping bookkeeping,
+            ProcessedEvents processedEvents, AccountEventPublisher events, SavingsMetrics metrics, Clock clock) {
         this.accounts = accounts;
-        this.holds = holds;
+        this.transfers = transfers;
         this.bookkeeping = bookkeeping;
         this.processedEvents = processedEvents;
-        this.deposits = deposits;
         this.events = events;
         this.metrics = metrics;
-        this.policy = policy;
         this.clock = clock;
     }
 
@@ -70,104 +67,84 @@ public class PaymentInstructionHandler {
             return;
         }
         switch (instruction) {
-            case Deposit deposit -> deposit(deposit);
-            case RequestWithdrawal request -> requestWithdrawal(request);
-            case ConfirmWithdrawal confirm -> confirmWithdrawal(confirm);
-            case CancelWithdrawal cancel -> cancelWithdrawal(cancel);
+            case TransferIn in -> transferIn(in);
+            case TransferOut out -> transferOut(out);
+            case ReturnTransfer returned -> returnTransfer(returned);
         }
     }
 
-    private void deposit(Deposit deposit) {
-        var account = accounts.get(deposit.accountId());
+    private void transferIn(TransferIn in) {
+        var account = accounts.get(in.accountId());
+        if (alreadyApplied(in.transferId(), Direction.IN, account.id(), in.amount(), in.eventId())) {
+            return;
+        }
         var now = clock.instant();
-        var incoming = new RecordedDeposit(deposit.paymentId(), account.id(), deposit.amount(), deposit.eventId(),
-                now);
-        var earlier = deposits.recordIfNew(incoming);
-        if (earlier.isPresent()) {
-            skipResentPayment(incoming, earlier.get());
-            return;
-        }
-        var entry = account.deposit(deposit.amount(), deposit.paymentId(), now);
-        bookkeeping.book(entry);
-        events.publish(new MoneyDeposited(account.id(), deposit.paymentId(), deposit.amount(), account.balance()));
-        metrics.deposited(deposit.amount());
+        bookkeeping.book(account.deposit(in.amount(), in.transferId(), now));
+        transfers.add(Transfer.deposited(in.transferId(), account.id(), in.amount(), now));
+        events.publish(new MoneyDeposited(account.id(), in.transferId(), in.amount(), account.balance()));
+        metrics.deposited(in.amount());
     }
 
-    /**
-     * A payment that was already credited, arriving under a new message id. Identical money: a re-send,
-     * skipped. Different account or amount: Payments reused a payment id, which is a contract violation
-     * that a person must look at (the exception sends the message to the dead-letter topic).
-     */
-    private void skipResentPayment(RecordedDeposit incoming, RecordedDeposit earlier) {
-        if (!incoming.sameMoneyAs(earlier)) {
-            throw new IllegalArgumentException("Payment %s was already credited as %s to account %s; message %s"
-                    .formatted(earlier.paymentId(), earlier.amount().amount(), earlier.accountId(), incoming.eventId())
-                    + " asks for %s to account %s".formatted(incoming.amount().amount(), incoming.accountId()));
-        }
-        log.info("Payment {} was already credited by message {}; skipping message {}", earlier.paymentId(),
-                earlier.eventId(), incoming.eventId());
-        metrics.duplicateMessage();
-    }
-
-    private void requestWithdrawal(RequestWithdrawal request) {
-        if (holds.findByRequestId(request.requestId()).isPresent()) {
-            metrics.duplicateMessage();
+    private void transferOut(TransferOut out) {
+        var account = accounts.get(out.accountId());
+        if (alreadyApplied(out.transferId(), Direction.OUT, account.id(), out.amount(), out.eventId())) {
             return;
         }
-        var account = accounts.get(request.accountId());
-        if (!account.canReserve(request.amount())) {
-            events.publish(new WithdrawalRejected(account.id(), request.requestId(), request.amount(),
+        var now = clock.instant();
+        if (!account.canWithdraw(out.amount())) {
+            transfers.add(Transfer.rejected(out.transferId(), account.id(), out.amount(), now));
+            events.publish(new WithdrawalRejected(account.id(), out.transferId(), out.amount(),
                     RejectionReason.INSUFFICIENT_FUNDS));
             metrics.withdrawal("rejected");
             return;
         }
-        account.reserve(request.amount());
-        holds.add(Hold.reserve(account.id(), request.requestId(), request.amount(), clock.instant(),
-                policy.holdTtl()));
-        events.publish(new FundsReserved(account.id(), request.requestId(), request.amount(),
-                account.availableBalance()));
-        metrics.withdrawal("reserved");
+        bookkeeping.book(account.withdraw(out.amount(), out.transferId(), now));
+        transfers.add(Transfer.withdrawn(out.transferId(), account.id(), out.amount(), now));
+        events.publish(new MoneyWithdrawn(account.id(), out.transferId(), out.amount(), account.balance()));
+        metrics.withdrawal("withdrawn");
     }
 
-    private void confirmWithdrawal(ConfirmWithdrawal confirm) {
-        var hold = holdFor(confirm.requestId(), confirm);
-        var account = accounts.get(hold.accountId());
+    private void returnTransfer(ReturnTransfer returned) {
+        var transfer = transfers.find(returned.transferId())
+                .orElseThrow(() -> new UnknownTransferException(returned.transferId()));
+        if (!transfer.accountId().equals(returned.accountId())) {
+            throw new IllegalArgumentException("Transfer " + transfer.transferId() + " does not belong to account "
+                    + returned.accountId());
+        }
         var now = clock.instant();
-        var outcome = hold.confirm(now);
-        if (outcome == Hold.Outcome.NO_OP) {
+        if (!transfer.markReturned(now)) {
+            log.info("Transfer {} was already returned; skipping message {}", transfer.transferId(),
+                    returned.eventId());
+            metrics.duplicateMessage();
             return;
         }
-        var entry = outcome == Hold.Outcome.APPLIED
-                ? account.settleHold(hold.amount(), hold.requestId(), now)
-                // The hold had expired and its funds were released: the money has left the bank anyway.
-                : account.debitAfterExpiredHold(hold.amount(), hold.requestId(), now);
-        bookkeeping.book(entry);
-        events.publish(new MoneyWithdrawn(account.id(), hold.requestId(), hold.amount(), account.balance()));
-        metrics.withdrawal("settled");
-        if (account.balance().isNegative()) {
-            log.warn("Account {} is overdrawn ({}) after late confirmation of {}", account.id(), account.balance(),
-                    hold.requestId());
-            metrics.negativeBalance();
-        }
+        var account = accounts.get(transfer.accountId());
+        bookkeeping.book(account.creditReturnedWithdrawal(transfer.amount(), transfer.transferId(), now));
+        events.publish(new WithdrawalReturned(account.id(), transfer.transferId(), transfer.amount(),
+                account.balance()));
+        metrics.withdrawal("returned");
     }
 
-    private void cancelWithdrawal(CancelWithdrawal cancel) {
-        var hold = holdFor(cancel.requestId(), cancel);
-        if (hold.cancel(clock.instant()) != Hold.Outcome.APPLIED) {
-            return;
+    /**
+     * A transfer id seen before. The same movement again: a re-send, skipped (a rejected withdrawal stays
+     * rejected; a new attempt needs a new transfer id). A different movement under the same id: Payments
+     * reused an id, a contract violation that a person must look at (the exception dead-letters the message).
+     */
+    private boolean alreadyApplied(String transferId, Direction direction, UUID accountId, Money amount,
+            String eventId) {
+        var earlier = transfers.find(transferId);
+        if (earlier.isEmpty()) {
+            return false;
         }
-        var account = accounts.get(hold.accountId());
-        account.releaseHold(hold.amount());
-        events.publish(new FundsReleased(account.id(), hold.requestId(), hold.amount(), ReleaseReason.CANCELLED));
-        metrics.withdrawal("released");
-    }
-
-    private Hold holdFor(String requestId, PaymentInstruction instruction) {
-        var hold = holds.findByRequestId(requestId).orElseThrow(() -> new UnknownWithdrawalException(requestId));
-        if (!hold.accountId().equals(instruction.accountId())) {
-            throw new IllegalArgumentException("Withdrawal " + requestId + " does not belong to account "
-                    + instruction.accountId());
+        var transfer = earlier.get();
+        if (!transfer.describes(direction, accountId, amount)) {
+            throw new IllegalArgumentException("Transfer %s is already known as %s %s for account %s; message %s"
+                    .formatted(transferId, transfer.direction(), transfer.amount().amount(), transfer.accountId(),
+                            eventId)
+                    + " describes %s %s for account %s".formatted(direction, amount.amount(), accountId));
         }
-        return hold;
+        log.info("Transfer {} was already applied ({}); skipping message {}", transferId, transfer.status(), eventId);
+        metrics.duplicateMessage();
+        return true;
     }
 }

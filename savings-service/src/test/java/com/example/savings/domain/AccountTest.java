@@ -30,35 +30,30 @@ class AccountTest {
     }
 
     @Test
-    void reservedFundsAreNotAvailableButStillOnTheBalance() {
-        account.deposit(Money.of("100.00"), "p1", NOW);
-        account.reserve(Money.of("60.00"));
+    void withdrawalDebitsAtOnceAndNeverOverdraws() {
+        account.deposit(Money.of("100.00"), "t1", NOW);
 
-        assertThat(account.balance()).isEqualTo(Money.of("100.00"));
-        assertThat(account.availableBalance()).isEqualTo(Money.of("40.00"));
-        assertThat(account.canReserve(Money.of("40.01"))).isFalse();
-        assertThatIllegalStateException().isThrownBy(() -> account.reserve(Money.of("40.01")));
-    }
+        var entry = account.withdraw(Money.of("60.00"), "t2", NOW);
 
-    @Test
-    void settlingAHoldDebitsTheBalanceAndClearsTheHold() {
-        account.deposit(Money.of("100.00"), "p1", NOW);
-        account.reserve(Money.of("60.00"));
-
-        var entry = account.settleHold(Money.of("60.00"), "w1", NOW);
-
+        assertThat(entry.type()).isEqualTo(EntryType.WITHDRAWAL);
         assertThat(entry.amount()).isEqualTo(Money.of("-60.00"));
         assertThat(account.balance()).isEqualTo(Money.of("40.00"));
-        assertThat(account.heldAmount()).isEqualTo(Money.ZERO);
+        assertThat(account.canWithdraw(Money.of("40.00"))).isTrue();
+        assertThat(account.canWithdraw(Money.of("40.01"))).isFalse();
+        assertThatIllegalStateException().isThrownBy(() -> account.withdraw(Money.of("40.01"), "t3", NOW));
+        assertThat(account.balance()).isEqualTo(Money.of("40.00"));
     }
 
     @Test
-    void lateDebitMayOverdraw() {
-        account.deposit(Money.of("10.00"), "p1", NOW);
+    void aReturnedWithdrawalIsCreditedBack() {
+        account.deposit(Money.of("100.00"), "t1", NOW);
+        account.withdraw(Money.of("60.00"), "t2", NOW);
 
-        account.debitAfterExpiredHold(Money.of("25.00"), "w1", NOW);
+        var entry = account.creditReturnedWithdrawal(Money.of("60.00"), "t2", NOW);
 
-        assertThat(account.balance()).isEqualTo(Money.of("-15.00"));
+        assertThat(entry.type()).isEqualTo(EntryType.WITHDRAWAL_RETURN);
+        assertThat(entry.reference()).isEqualTo("t2");
+        assertThat(account.balance()).isEqualTo(Money.of("100.00"));
     }
 
     @Test

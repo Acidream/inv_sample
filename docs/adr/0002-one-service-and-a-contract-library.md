@@ -21,7 +21,7 @@ The Payments team's service is not built; tests and the simulator produce its me
 
 ## Consequences
 
-- One transactional boundary per account: balance, holds, ledger, outbox live in one database.
+- One transactional boundary per account: balance, transfers, ledger, outbox live in one database.
 - The contract is versioned and reviewed separately from the service that implements it.
 - In a real setup `events-proto` would be its own repository/artifact, published to a registry and
   consumed by version; a module is the simplest equivalent here.

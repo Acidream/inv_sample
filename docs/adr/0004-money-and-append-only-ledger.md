@@ -29,7 +29,7 @@ read and check on every withdrawal.
 ## Alternatives considered
 
 - **Full double-entry bookkeeping** (every booking debits one account and credits another, including
-  internal GL accounts such as "interest expense" and "payments clearing"). This is what a production
+  internal GL accounts such as "interest expense" and "transfer clearing"). This is what a production
   core-banking ledger should do: it makes the books balance by construction and supports
   reconciliation with the general ledger. Not as the internal source of truth: with a single
   customer-facing account type, it adds a second entry per booking without changing any behaviour.

@@ -14,16 +14,17 @@ option java_package = "com.example.events.savings.v1";
 // Every posting balances: the sum of DEBIT amounts equals the sum of CREDIT amounts.
 // Book accounts are logical names; Finance maps them to its chart of accounts:
 //   customer:<account id>  liability, what the bank owes the customer
-//   payments-clearing      money in transit to or from Payments
+//   transfer-clearing      money in transit between the current account and savings
 //   interest-expense       profit and loss, what interest costs the bank
 //   interest-payable       liability, interest earned but not yet credited
 message Posting {
   enum Type {
     TYPE_UNSPECIFIED = 0;
-    DEPOSIT = 1;            // payments-clearing  -> customer
-    WITHDRAWAL = 2;         // customer           -> payments-clearing
+    DEPOSIT = 1;            // transfer-clearing  -> customer
+    WITHDRAWAL = 2;         // customer           -> transfer-clearing
     INTEREST_ACCRUAL = 3;   // interest-expense   -> interest-payable, daily, sub-cent
     INTEREST_PAYOUT = 4;    // interest-payable   -> customer, monthly, rounded to cents
+    WITHDRAWAL_RETURN = 5;  // transfer-clearing  -> customer, a withdrawal the current account refused
   }
 
   message Line {
@@ -42,7 +43,7 @@ message Posting {
   string value_date = 3;    // ISO date (Europe/Berlin) the posting belongs to in the books
   string account_id = 4;
   Type type = 5;
-  string reference = 6;     // payment id, withdrawal request id, "interest:2026-01" or "accrual:2026-01-31"
+  string reference = 6;     // transfer id, "interest:2026-01" or "accrual:2026-01-31"
   string currency = 7;      // ISO 4217, "EUR"
   repeated Line lines = 8;
 }

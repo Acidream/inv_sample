@@ -15,8 +15,8 @@ Test pyramid, written outside-in:
 |---|---|---|---|
 | Acceptance (ATDD) | Karate features, run by JUnit inside `@SpringBootTest` | Every user-visible behaviour, end to end: REST in, Kafka in and out, jobs | `src/test/resources/acceptance/*.feature` |
 | Integration | JUnit 5, Testcontainers | Technical behaviour not worth a feature (poison message → DLT) | `DeadLetterIT` |
-| Use case | JUnit 5, Mockito at the ports | Rules in the use cases (duplicates, late confirmation) | `PaymentInstructionHandlerTest` |
-| Domain | JUnit 5, AssertJ, parameterized tables | Money, interest maths, hold state machine | `domain/*Test` |
+| Use case | JUnit 5, Mockito at the ports | Rules in the use cases (duplicates, reused ids, returns) | `PaymentInstructionHandlerTest` |
+| Domain | JUnit 5, AssertJ, parameterized tables | Money, interest maths, transfer states, balanced postings | `domain/*Test` |
 | Architecture | ArchUnit | The dependency rule | `ArchitectureTest` |
 
 - One Spring context with **real Postgres 17 and Kafka 4** (`TestcontainersConfiguration`,
@@ -30,8 +30,8 @@ Test pyramid, written outside-in:
 
 ## Consequences
 
-- Features read as the specification ("money that already left the bank is booked even if it
-  overdraws the account").
+- Features read as the specification ("a withdrawal the current account refused is credited back,
+  once").
 - The suite takes about 30 s, mostly container start-up, paid once per build.
 - Karate 2.1 cannot resolve `classpath:` feature paths on Windows, so the runner uses the filesystem
   path `src/test/resources/acceptance`, which works everywhere.

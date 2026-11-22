@@ -10,14 +10,16 @@ properly. "Financial-grade, correct and auditable" is about depth, not breadth.
 
 ## Decision
 
-Build **savings accounts** end to end: opening, deposits, two-phase withdrawals, daily interest
-accrual and monthly payout. Deliberately left out:
+Build **savings accounts** end to end: opening, transfers from and to the customer's current
+account, daily interest accrual and monthly payout. Deliberately left out:
 
 | Omitted | Why it's safe to leave out | What it would take |
 |---|---|---|
 | **Taxes** (Abgeltungsteuer, Soli, Kirchensteuer, Freistellungsauftrag) | Interest is paid gross; no other part depends on it. | A per-customer, per-tax-year allowance (Freistellungsauftrag, up to €1,000 since 2023) consumed at payout, withholding 25 % + 5.5 % Soli on the rest, in the payout transaction. Interest would then be booked as two entries (gross credit, tax debit). |
 | **Campaigns / bonus interest** | Would be a separate consumer of `savings.account-events.v1`. | A campaign service that reacts to `AccountOpened`, `InterestPaid`. |
 | **Investments** | Different aggregate (orders, holdings, FIFO cost basis). | A separate service. |
+| **External payments** (SEPA, SPEI, cards) | Savings only moves money to and from the customer's current account (ADR 0015); external payments are the current account's job. | Nothing in Savings. |
+| **Current account and Payments services** | Only their messages matter to Savings. | Played by the tests and `payments-simulator`. |
 | **S3** | Nothing needs object storage yet. | Monthly statements as PDF/CSV exports. |
 | **Authentication/authorisation** | Orthogonal to the domain; would mostly be configuration. | JWT validation at a gateway or Spring Security resource server, customer id taken from the token rather than the request. |
 | **Multi-currency** | EUR-only product. `Money` hard-codes EUR and the wire format already carries a currency code, which is validated. | Currency on `Money` and per account. |
