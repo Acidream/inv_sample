@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package payments.v1;
+
+import "common.proto";
+import "google/protobuf/timestamp.proto";
+
+option java_multiple_files = true;
+option java_package = "com.example.events.payments.v1";
+
+// Topic: payments.savings-instructions.v1 (owned by the Payments team).
+// Key:   account_id. Producers MUST key by account so that all instructions
+//        for one account land on one partition and are consumed in order.
+//
+// Evolution rules: additive only. Never change or reuse a field number;
+// reserve numbers of removed fields.
+message PaymentInstruction {
+  string event_id = 1;                         // unique per message, used for de-duplication
+  google.protobuf.Timestamp occurred_at = 2;
+  string account_id = 3;                       // UUID of the savings account
+
+  oneof payload {
+    PaymentReceived payment_received = 10;
+    WithdrawalRequested withdrawal_requested = 11;
+    WithdrawalConfirmed withdrawal_confirmed = 12;
+    WithdrawalCancelled withdrawal_cancelled = 13;
+  }
+}
+
+// An incoming transfer was received for the savings account.
+message PaymentReceived {
+  string payment_id = 1;
+  common.v1.Money amount = 2;
+}
+
+// Phase 1: the customer wants to move money out. Savings answers with
+// FundsReserved or WithdrawalRejected.
+message WithdrawalRequested {
+  string request_id = 1;
+  common.v1.Money amount = 2;
+}
+
+// Phase 2a: the outgoing transfer was executed. Money has left the bank.
+message WithdrawalConfirmed {
+  string request_id = 1;
+}
+
+// Phase 2b: the outgoing transfer failed or was aborted.
+message WithdrawalCancelled {
+  string request_id = 1;
+}

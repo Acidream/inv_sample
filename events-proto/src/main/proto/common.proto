@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package common.v1;
+
+option java_multiple_files = true;
+option java_package = "com.example.events.common.v1";
+
+// Exact decimal amount. Never use float/double for money.
+// amount: plain decimal string with at most 2 fraction digits, e.g. "100.00".
+// currency: ISO 4217 code. Only "EUR" is accepted today.
+message Money {
+  string amount = 1;
+  string currency = 2;
+}

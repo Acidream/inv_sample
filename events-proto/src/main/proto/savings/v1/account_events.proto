@@ -1,0 +1,78 @@
+syntax = "proto3";
+
+package savings.v1;
+
+import "common.proto";
+import "google/protobuf/timestamp.proto";
+
+option java_multiple_files = true;
+option java_package = "com.example.events.savings.v1";
+
+// Topic: savings.account-events.v1 (owned by the Savings team).
+// Key:   account_id. Events of one account are published in order.
+// Delivery is at-least-once: consumers must de-duplicate on event_id.
+message AccountEvent {
+  string event_id = 1;
+  google.protobuf.Timestamp occurred_at = 2;
+  string account_id = 3;
+
+  oneof payload {
+    AccountOpened account_opened = 10;
+    MoneyDeposited money_deposited = 11;
+    FundsReserved funds_reserved = 12;
+    WithdrawalRejected withdrawal_rejected = 13;
+    MoneyWithdrawn money_withdrawn = 14;
+    FundsReleased funds_released = 15;
+    InterestPaid interest_paid = 16;
+  }
+}
+
+message AccountOpened {
+  string customer_id = 1;
+  string annual_rate = 2;          // decimal fraction, e.g. "0.0250" = 2.5 % p.a.
+}
+
+message MoneyDeposited {
+  string payment_id = 1;
+  common.v1.Money amount = 2;
+  common.v1.Money balance = 3;
+}
+
+message FundsReserved {
+  string request_id = 1;
+  common.v1.Money amount = 2;
+  common.v1.Money available_balance = 3;
+}
+
+message WithdrawalRejected {
+  enum Reason {
+    REASON_UNSPECIFIED = 0;
+    INSUFFICIENT_FUNDS = 1;
+  }
+  string request_id = 1;
+  common.v1.Money amount = 2;
+  Reason reason = 3;
+}
+
+message MoneyWithdrawn {
+  string request_id = 1;
+  common.v1.Money amount = 2;
+  common.v1.Money balance = 3;
+}
+
+message FundsReleased {
+  enum Reason {
+    REASON_UNSPECIFIED = 0;
+    CANCELLED = 1;
+    EXPIRED = 2;
+  }
+  string request_id = 1;
+  common.v1.Money amount = 2;
+  Reason reason = 3;
+}
+
+message InterestPaid {
+  string period = 1;               // ISO year-month the interest was earned in, e.g. "2026-10"
+  common.v1.Money amount = 2;
+  common.v1.Money balance = 3;
+}
