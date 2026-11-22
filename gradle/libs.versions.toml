@@ -1,0 +1,23 @@
+[versions]
+spring-boot = "4.2.0"
+protobuf = "4.36.2"
+protobuf-plugin = "0.10.1"
+shedlock = "7.11.0"
+springdoc = "3.2.1"
+karate = "2.1.4"
+archunit = "1.5.1"
+checkstyle = "14.4.0"
+
+[libraries]
+protobuf-java = { module = "com.google.protobuf:protobuf-java", version.ref = "protobuf" }
+protobuf-java-util = { module = "com.google.protobuf:protobuf-java-util", version.ref = "protobuf" }
+protoc = { module = "com.google.protobuf:protoc", version.ref = "protobuf" }
+shedlock-spring = { module = "net.javacrumbs.shedlock:shedlock-spring", version.ref = "shedlock" }
+shedlock-jdbc = { module = "net.javacrumbs.shedlock:shedlock-provider-jdbc-template", version.ref = "shedlock" }
+springdoc-webmvc = { module = "org.springdoc:springdoc-openapi-starter-webmvc-ui", version.ref = "springdoc" }
+karate-junit6 = { module = "io.karatelabs:karate-junit6", version.ref = "karate" }
+archunit = { module = "com.tngtech.archunit:archunit", version.ref = "archunit" }
+
+[plugins]
+spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }
+protobuf = { id = "com.google.protobuf", version.ref = "protobuf-plugin" }
