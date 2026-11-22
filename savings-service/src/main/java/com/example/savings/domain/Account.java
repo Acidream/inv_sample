@@ -1,10 +1,5 @@
 package com.example.savings.domain;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
-import jakarta.persistence.Version;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
@@ -18,72 +13,72 @@ import java.util.UUID;
 /**
  * Savings account aggregate. Every balance change goes through a method here and produces a
  * {@link LedgerEntry}; the cached {@code balance} always equals the {@code balanceAfter} of the
- * latest entry. {@code @Version} turns concurrent modifications into optimistic-lock failures
- * instead of lost updates.
+ * latest entry.
  *
  * <p>The account also numbers its entries ({@code entryNo} 1, 2, 3, ...) and never books one earlier
  * than the previous one. Bookings can come from different instances whose clocks differ slightly;
  * without this, a later entry could get an earlier {@code bookedAt} and sort before the entry whose
  * balance it builds on.
+ *
+ * <p>Plain Java: persistence maps it through {@link State} (ADR 0016). {@code version} is the
+ * optimistic-concurrency token of the stored aggregate (null until first stored); the domain never
+ * interprets it, persistence refuses to store a change made to an outdated version.
  */
-@Entity
-@Table(name = "account")
-public class Account {
+public final class Account {
 
-    @Id
-    private UUID id;
+    /** Everything that is stored, for persistence to map; invariants are checked on {@link #restore}. */
+    public record State(UUID id, UUID customerId, BigDecimal annualRate, Money balance, BigDecimal accruedInterest,
+            LocalDate lastAccrualDate, Instant openedAt, long lastEntryNo, Instant lastBookedAt, Long version) {
+    }
 
-    @Column(nullable = false, updatable = false)
-    private UUID customerId;
-
+    private final UUID id;
+    private final UUID customerId;
     /** Decimal fraction per year, e.g. 0.0250 = 2.5 % p.a. */
-    @Column(nullable = false, precision = 7, scale = 4)
-    private BigDecimal annualRate;
-
-    @Column(nullable = false, precision = 19, scale = 2)
-    private BigDecimal balance;
-
+    private final BigDecimal annualRate;
+    private final Instant openedAt;
+    private final Long version;
+    private Money balance;
     /** Interest earned but not yet paid out, sub-cent precision. */
-    @Column(nullable = false, precision = 19, scale = Interest.ACCRUAL_SCALE)
     private BigDecimal accruedInterest;
-
     /** Last calendar day (business time zone) for which interest has been accrued. */
-    @Column(nullable = false)
     private LocalDate lastAccrualDate;
-
-    @Column(nullable = false, updatable = false)
-    private Instant openedAt;
-
     /** Number of the latest ledger entry; 0 before the first booking. */
-    @Column(nullable = false)
     private long lastEntryNo;
-
     /** {@code bookedAt} of the latest ledger entry ({@code openedAt} before the first booking). */
-    @Column(nullable = false)
     private Instant lastBookedAt;
 
-    @Version
-    private Long version;
-
-    protected Account() {
+    private Account(State state) {
+        this.id = Objects.requireNonNull(state.id(), "id");
+        this.customerId = Objects.requireNonNull(state.customerId(), "customerId");
+        if (state.annualRate().signum() < 0) {
+            throw new IllegalArgumentException("Annual rate must not be negative: " + state.annualRate());
+        }
+        this.annualRate = state.annualRate().setScale(4, RoundingMode.UNNECESSARY);
+        this.balance = Objects.requireNonNull(state.balance(), "balance");
+        if (balance.isNegative()) {
+            throw new IllegalArgumentException("Balance must not be negative: " + balance);
+        }
+        this.accruedInterest = state.accruedInterest().setScale(Interest.ACCRUAL_SCALE, RoundingMode.UNNECESSARY);
+        this.lastAccrualDate = Objects.requireNonNull(state.lastAccrualDate(), "lastAccrualDate");
+        this.openedAt = Objects.requireNonNull(state.openedAt(), "openedAt");
+        this.lastEntryNo = state.lastEntryNo();
+        this.lastBookedAt = Objects.requireNonNull(state.lastBookedAt(), "lastBookedAt");
+        this.version = state.version();
     }
 
     public static Account open(UUID customerId, BigDecimal annualRate, Instant now, ZoneId zone) {
-        Objects.requireNonNull(customerId, "customerId");
-        if (annualRate.signum() < 0) {
-            throw new IllegalArgumentException("Annual rate must not be negative: " + annualRate);
-        }
-        var account = new Account();
-        account.id = UUID.randomUUID();
-        account.customerId = customerId;
-        account.annualRate = annualRate.setScale(4, RoundingMode.UNNECESSARY);
-        account.balance = Money.ZERO.amount();
-        account.accruedInterest = BigDecimal.ZERO.setScale(Interest.ACCRUAL_SCALE);
-        account.lastAccrualDate = LocalDate.ofInstant(now, zone).minusDays(1);
-        account.openedAt = now;
-        account.lastEntryNo = 0;
-        account.lastBookedAt = now;
-        return account;
+        return new Account(new State(UUID.randomUUID(), customerId, annualRate, Money.ZERO, BigDecimal.ZERO,
+                LocalDate.ofInstant(now, zone).minusDays(1), now, 0, now, null));
+    }
+
+    /** Rebuilds a stored account. */
+    public static Account restore(State state) {
+        return new Account(state);
+    }
+
+    public State state() {
+        return new State(id, customerId, annualRate, balance, accruedInterest, lastAccrualDate, openedAt, lastEntryNo,
+                lastBookedAt, version);
     }
 
     // --- money in -----------------------------------------------------------------------------
@@ -100,7 +95,7 @@ public class Account {
     // --- money out ----------------------------------------------------------------------------
 
     public boolean canWithdraw(Money amount) {
-        return balance().compareTo(amount) >= 0;
+        return balance.compareTo(amount) >= 0;
     }
 
     /**
@@ -149,12 +144,11 @@ public class Account {
     // --- state --------------------------------------------------------------------------------
 
     private LedgerEntry book(EntryType type, Money signedAmount, String reference, Instant now) {
-        var newBalance = balance().plus(signedAmount);
-        balance = newBalance.amount();
+        balance = balance.plus(signedAmount);
         // A clock behind the previous booker's must not book into the past.
         lastBookedAt = now.isAfter(lastBookedAt) ? now : lastBookedAt;
         lastEntryNo++;
-        return new LedgerEntry(id, lastEntryNo, type, signedAmount, newBalance, reference, lastBookedAt);
+        return new LedgerEntry(null, id, lastEntryNo, type, signedAmount, balance, reference, lastBookedAt);
     }
 
     public UUID id() {
@@ -170,7 +164,7 @@ public class Account {
     }
 
     public Money balance() {
-        return new Money(balance);
+        return balance;
     }
 
     public BigDecimal accruedInterest() {

@@ -102,7 +102,7 @@ change the design.
 | Distributed workflow | Transfers with the current account as a saga with one compensating step; why no holds | [0015](docs/adr/0015-transfers-only-with-the-current-account.md) |
 | Big tables | Monthly partitions, one composite index, keyset pagination | [0011](docs/adr/0011-ledger-partitioning-and-keyset-pagination.md) |
 | Contracts | Protobuf envelope with `oneof`, additive evolution, anti-corruption layer | [0005](docs/adr/0005-protobuf-event-contracts.md) |
-| Architecture | Hexagonal layers, enforced by ArchUnit | [0003](docs/adr/0003-hexagonal-layers-with-jpa-on-the-domain.md) |
+| Architecture | Hexagonal layers; plain-Java domain, JPA entities only in the persistence adapter; boundaries enforced by Checkstyle import control and ArchUnit | [0003](docs/adr/0003-hexagonal-layers-with-jpa-on-the-domain.md), [0016](docs/adr/0016-domain-model-separate-from-jpa-entities.md) |
 | Delivery | Acceptance tests first, real infrastructure in tests | [0012](docs/adr/0012-acceptance-tests-first.md) |
 | Operations | Business metrics, dashboard, alerts | [0013](docs/adr/0013-observability.md) |
 | What's left out, and why | Taxes, campaigns, auth, S3, ... | [0001](docs/adr/0001-scope-savings-only.md) |
@@ -114,13 +114,14 @@ All decisions: [docs/adr](docs/adr/README.md) · Vocabulary: [docs/GLOSSARY.md](
 ```
 events-proto/         Protobuf contracts (inbound from Payments, outbound account events)
 savings-service/      the service
-  domain/             Account, Transfer, LedgerEntry, Posting, Money, Interest: plain Java, no Spring
+  domain/             Account, Transfer, LedgerEntry, Posting, Money, Interest: plain Java, no JPA, no Spring
   application/        use cases and the ports they need
-  adapter/            web · messaging · persistence · scheduling · metrics
+  adapter/            web · messaging · persistence (JPA entities, kept package-private) · scheduling · metrics
   resources/db/       Flyway migrations
   test/.../acceptance Karate runner + TestHooks;  test/resources/acceptance/*.feature
 payments-simulator/   CLI that plays the Payments team locally
 ops/                  Prometheus config and alerts, Grafana provisioning and dashboard
+config/checkstyle/    code style and import-control.xml (which layer may import what)
 docs/                 ADRs and glossary
 ```
 

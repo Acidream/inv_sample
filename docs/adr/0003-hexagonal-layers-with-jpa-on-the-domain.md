@@ -1,6 +1,11 @@
 # 0003 – Lightweight hexagonal layers, JPA annotations on the domain
 
-Date: 2026-11-22 · Status: Accepted
+Date: 2026-11-22 · Status: Partly superseded by [0016](0016-domain-model-separate-from-jpa-entities.md)
+
+> **Update (ADR 0016):** the domain no longer carries JPA annotations; entities live in
+> `adapter.persistence` and use cases save changes explicitly. The layering below still holds, and is
+> now also enforced by Checkstyle's import control. The "pragmatic exception", the Spring Data
+> repositories implementing the ports directly and the reliance on dirty checking are replaced.
 
 ## Context
 

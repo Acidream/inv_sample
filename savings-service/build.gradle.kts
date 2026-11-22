@@ -38,6 +38,7 @@ dependencies {
 
 checkstyle {
     toolVersion = libs.versions.checkstyle.get()
+    configDirectory = rootProject.file("config/checkstyle")   // ${config_loc}, for import-control.xml
     configFile = rootProject.file("config/checkstyle/checkstyle.xml")
     maxWarnings = 0
 }

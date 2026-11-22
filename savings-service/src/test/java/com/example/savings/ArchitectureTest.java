@@ -1,5 +1,6 @@
 package com.example.savings;
 
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static com.tngtech.archunit.library.Architectures.layeredArchitecture;
 
@@ -28,12 +29,30 @@ class ArchitectureTest {
                 .check(CLASSES);
     }
 
+    /** ADR 0016: no JPA annotations, no framework. Checkstyle's import control checks the same on source. */
     @Test
-    void domainIsPlainJavaPlusJpaMapping() {
+    void domainIsPlainJava() {
         noClasses().that().resideInAPackage("..savings.domain..")
+                .should().dependOnClassesThat().resideOutsideOfPackages("java..", "..savings.domain..")
+                .check(CLASSES);
+    }
+
+    @Test
+    void entitiesLiveInThePersistenceAdapterAndAreNotPublic() {
+        // By name: tests obey the import rules too, and only adapter.persistence may import JPA.
+        classes().that().areAnnotatedWith("jakarta.persistence.Entity")
+                .should().resideInAPackage("..savings.adapter.persistence..")
+                .andShould().notBePublic()
+                .check(CLASSES);
+    }
+
+    /** Entities, Spring Data repositories and JPA itself don't leak: the rest only sees ports and domain objects. */
+    @Test
+    void persistenceDoesNotLeakOutOfItsAdapter() {
+        noClasses().that().resideOutsideOfPackage("..savings.adapter.persistence..")
                 .should().dependOnClassesThat().resideInAnyPackage(
-                        "org.springframework..", "org.hibernate..", "org.apache.kafka..", "com.google.protobuf..",
-                        "io.micrometer..")
+                        "..savings.adapter.persistence..", "jakarta.persistence..", "org.hibernate..",
+                        "org.springframework.data..")
                 .check(CLASSES);
     }
 

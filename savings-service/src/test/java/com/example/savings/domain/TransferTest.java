@@ -1,6 +1,7 @@
 package com.example.savings.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.example.savings.domain.Transfer.Direction;
@@ -45,5 +46,23 @@ class TransferTest {
         assertThat(transfer.describes(Direction.IN, ACCOUNT, AMOUNT)).isFalse();
         assertThat(transfer.describes(Direction.OUT, UUID.randomUUID(), AMOUNT)).isFalse();
         assertThat(transfer.describes(Direction.OUT, ACCOUNT, Money.of("40.01"))).isFalse();
+    }
+
+    @Test
+    void aStoredTransferIsRebuiltWithTheSameState() {
+        var returned = Transfer.withdrawn("t1", ACCOUNT, AMOUNT, NOW);
+        returned.markReturned(NOW);
+        var stored = new Transfer.State("t1", ACCOUNT, Direction.OUT, AMOUNT, Transfer.Status.RETURNED, NOW, NOW, 3L);
+
+        assertThat(Transfer.restore(stored).state()).isEqualTo(stored);
+        assertThat(Transfer.restore(stored).markReturned(NOW)).isFalse();
+    }
+
+    @Test
+    void onlyAWithdrawalCanBeStoredAsReturned() {
+        var returnedDeposit = new Transfer.State("t1", ACCOUNT, Direction.IN, AMOUNT, Transfer.Status.RETURNED, NOW,
+                NOW, 3L);
+
+        assertThatIllegalArgumentException().isThrownBy(() -> Transfer.restore(returnedDeposit));
     }
 }

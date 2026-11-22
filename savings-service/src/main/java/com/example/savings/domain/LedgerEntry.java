@@ -1,16 +1,7 @@
 package com.example.savings.domain;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.SequenceGenerator;
-import jakarta.persistence.Table;
-import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -20,58 +11,45 @@ import java.util.UUID;
  *
  * <p>{@code entryNo} numbers an account's entries without gaps, in booking order; {@code bookedAt}
  * never decreases along it (see {@link Account}). So ordering by (bookedAt, entryNo) is the booking
- * order. The database {@code id} is not: each instance reserves its own block of sequence values.
+ * order. The stored {@code id} is not: each instance reserves its own block of sequence values.
  *
- * <p>The table is range-partitioned by {@code booked_at}, so its primary key is (id, booked_at).
- * Hibernate only needs {@code id} to be unique, which the sequence guarantees.
+ * <p>Only an {@link Account} creates new entries. {@code id} is null until the entry is stored.
  */
-@Entity
-@Table(name = "ledger_entry")
-public class LedgerEntry {
+public final class LedgerEntry {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "ledger_entry_seq")
-    @SequenceGenerator(name = "ledger_entry_seq", sequenceName = "ledger_entry_seq", allocationSize = 50)
-    private Long id;
-
-    @Column(nullable = false, updatable = false)
-    private UUID accountId;
-
-    @Column(nullable = false, updatable = false)
-    private long entryNo;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, updatable = false)
-    private EntryType type;
-
+    private final Long id;
+    private final UUID accountId;
+    private final long entryNo;
+    private final EntryType type;
     /** Signed: credits are positive, debits negative. */
-    @Column(nullable = false, updatable = false, precision = 19, scale = 2)
-    private BigDecimal amount;
+    private final Money amount;
+    private final Money balanceAfter;
+    /** Business reference: transfer id or interest period. */
+    private final String reference;
+    private final Instant bookedAt;
 
-    @Column(nullable = false, updatable = false, precision = 19, scale = 2)
-    private BigDecimal balanceAfter;
-
-    /** Business reference: payment id, withdrawal request id or interest period. */
-    @Column(nullable = false, updatable = false)
-    private String reference;
-
-    @Column(nullable = false, updatable = false)
-    private Instant bookedAt;
-
-    protected LedgerEntry() {
-    }
-
-    LedgerEntry(UUID accountId, long entryNo, EntryType type, Money amount, Money balanceAfter, String reference,
-            Instant bookedAt) {
-        this.accountId = accountId;
+    LedgerEntry(Long id, UUID accountId, long entryNo, EntryType type, Money amount, Money balanceAfter,
+            String reference, Instant bookedAt) {
+        this.id = id;
+        this.accountId = Objects.requireNonNull(accountId, "accountId");
+        if (entryNo < 1) {
+            throw new IllegalArgumentException("Entry numbers start at 1: " + entryNo);
+        }
         this.entryNo = entryNo;
-        this.type = type;
-        this.amount = amount.amount();
-        this.balanceAfter = balanceAfter.amount();
-        this.reference = reference;
-        this.bookedAt = bookedAt;
+        this.type = Objects.requireNonNull(type, "type");
+        this.amount = Objects.requireNonNull(amount, "amount");
+        this.balanceAfter = Objects.requireNonNull(balanceAfter, "balanceAfter");
+        this.reference = Objects.requireNonNull(reference, "reference");
+        this.bookedAt = Objects.requireNonNull(bookedAt, "bookedAt");
     }
 
+    /** Rebuilds a stored entry. */
+    public static LedgerEntry restore(long id, UUID accountId, long entryNo, EntryType type, Money amount,
+            Money balanceAfter, String reference, Instant bookedAt) {
+        return new LedgerEntry(id, accountId, entryNo, type, amount, balanceAfter, reference, bookedAt);
+    }
+
+    /** Null until stored. */
     public Long id() {
         return id;
     }
@@ -89,11 +67,11 @@ public class LedgerEntry {
     }
 
     public Money amount() {
-        return new Money(amount);
+        return amount;
     }
 
     public Money balanceAfter() {
-        return new Money(balanceAfter);
+        return balanceAfter;
     }
 
     public String reference() {

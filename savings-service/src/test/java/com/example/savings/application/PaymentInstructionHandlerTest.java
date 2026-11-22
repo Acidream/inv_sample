@@ -124,6 +124,9 @@ class PaymentInstructionHandlerTest {
         handler.handle(new ReturnTransfer("e4", account.id(), "t1"));
 
         assertThat(account.balance()).isEqualTo(Money.of("100.00"));
+        // Nothing is saved implicitly: both changed aggregates are handed back to their ports, once.
+        verify(transfers).update(transfer);
+        verify(accounts).update(account);
         verify(events).publish(new WithdrawalReturned(account.id(), "t1", Money.of("40.00"), Money.of("100.00")));
         verify(metrics).duplicateMessage();
     }

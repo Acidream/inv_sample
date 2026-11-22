@@ -13,8 +13,10 @@ accounts are expensive.
 1. **Ordering comes from Kafka.** Payments keys instructions by account id (part of the contract,
    ADR 0005), so all instructions of one account are on one partition and are consumed by one thread
    in order. "Return before withdrawal" cannot happen.
-2. **Safety comes from optimistic locking.** `Account` and `Transfer` have `@Version`. A conflicting
-   commit fails with `OptimisticLockingFailureException` instead of overwriting.
+2. **Safety comes from optimistic locking.** The stored account and transfer have `@Version`
+   (`AccountEntity`, `TransferEntity`); the domain objects carry the version as an opaque token
+   (ADR 0016). A conflicting commit fails with `OptimisticLockingFailureException` instead of
+   overwriting.
    - Consumer: the error handler retries the whole message (new transaction, fresh read), see ADR 0007.
    - Interest job: skips the account; the next run catches it up because accrual resumes from the
      account's last accrued day (ADR 0010).

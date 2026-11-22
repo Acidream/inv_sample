@@ -80,6 +80,7 @@ public class PaymentInstructionHandler {
         }
         var now = clock.instant();
         bookkeeping.book(account.deposit(in.amount(), in.transferId(), now));
+        accounts.update(account);
         transfers.add(Transfer.deposited(in.transferId(), account.id(), in.amount(), now));
         events.publish(new MoneyDeposited(account.id(), in.transferId(), in.amount(), account.balance()));
         metrics.deposited(in.amount());
@@ -99,6 +100,7 @@ public class PaymentInstructionHandler {
             return;
         }
         bookkeeping.book(account.withdraw(out.amount(), out.transferId(), now));
+        accounts.update(account);
         transfers.add(Transfer.withdrawn(out.transferId(), account.id(), out.amount(), now));
         events.publish(new MoneyWithdrawn(account.id(), out.transferId(), out.amount(), account.balance()));
         metrics.withdrawal("withdrawn");
@@ -118,8 +120,10 @@ public class PaymentInstructionHandler {
             metrics.duplicateMessage();
             return;
         }
+        transfers.update(transfer);
         var account = accounts.get(transfer.accountId());
         bookkeeping.book(account.creditReturnedWithdrawal(transfer.amount(), transfer.transferId(), now));
+        accounts.update(account);
         events.publish(new WithdrawalReturned(account.id(), transfer.transferId(), transfer.amount(),
                 account.balance()));
         metrics.withdrawal("returned");

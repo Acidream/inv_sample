@@ -18,6 +18,10 @@
         <module name="UnusedImports"/>
         <module name="RedundantImport"/>
         <module name="IllegalImport"/>
+        <!-- Layer boundaries: domain stays plain Java, JPA stays in adapter.persistence (ADR 0016). -->
+        <module name="ImportControl">
+            <property name="file" value="${config_loc}/import-control.xml"/>
+        </module>
         <module name="OneTopLevelClass"/>
         <module name="OuterTypeFilename"/>
         <module name="PackageName">

@@ -1,6 +1,7 @@
 package com.example.savings.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 
 import java.math.BigDecimal;
@@ -27,6 +28,27 @@ class AccountTest {
         assertThat(entry.amount()).isEqualTo(Money.of("5.50"));
         assertThat(entry.balanceAfter()).isEqualTo(Money.of("15.50"));
         assertThat(account.balance()).isEqualTo(Money.of("15.50"));
+    }
+
+    @Test
+    void aStoredAccountIsRebuiltWithTheSameState() {
+        account.deposit(Money.of("10.00"), "p1", NOW);
+        account.accrueDay(account.nextAccrualDate(), Money.of("10.00"));
+        var stored = new Account.State(account.id(), account.customerId(), account.annualRate(), account.balance(),
+                account.accruedInterest(), account.lastAccrualDate(), account.openedAt(), 1, NOW, 7L);
+
+        var restored = Account.restore(stored);
+
+        assertThat(restored.state()).isEqualTo(stored);
+        assertThat(restored.deposit(Money.of("1.00"), "p2", NOW).entryNo()).isEqualTo(2);
+    }
+
+    @Test
+    void aStoredAccountMustNotBeOverdrawn() {
+        var overdrawn = new Account.State(account.id(), account.customerId(), account.annualRate(),
+                Money.of("-0.01"), account.accruedInterest(), account.lastAccrualDate(), NOW, 0, NOW, 1L);
+
+        assertThatIllegalArgumentException().isThrownBy(() -> Account.restore(overdrawn));
     }
 
     @Test

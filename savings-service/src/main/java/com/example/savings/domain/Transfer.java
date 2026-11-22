@@ -1,13 +1,5 @@
 package com.example.savings.domain;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
-import jakarta.persistence.Version;
-import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
@@ -22,10 +14,10 @@ import java.util.UUID;
  *   OUT:  COMPLETED ──return──▶ RETURNED
  *         REJECTED   (insufficient funds; a new attempt needs a new transfer id)
  * </pre>
+ *
+ * <p>Plain Java, stored through {@link State} (ADR 0016); {@code version} as on {@link Account}.
  */
-@Entity
-@Table(name = "transfer")
-public class Transfer {
+public final class Transfer {
 
     public enum Direction {
         IN,
@@ -38,54 +30,58 @@ public class Transfer {
         RETURNED
     }
 
-    @Id
-    private String transferId;
-
-    @Column(nullable = false, updatable = false)
-    private UUID accountId;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, updatable = false)
-    private Direction direction;
-
-    @Column(nullable = false, updatable = false, precision = 19, scale = 2)
-    private BigDecimal amount;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private Status status;
-
-    @Column(nullable = false, updatable = false)
-    private Instant createdAt;
-
-    private Instant returnedAt;
-
-    @Version
-    private Long version;
-
-    protected Transfer() {
+    /** Everything that is stored, for persistence to map; invariants are checked on {@link #restore}. */
+    public record State(String transferId, UUID accountId, Direction direction, Money amount, Status status,
+            Instant createdAt, Instant returnedAt, Long version) {
     }
 
-    private Transfer(String transferId, UUID accountId, Direction direction, Money amount, Status status,
-            Instant now) {
-        this.transferId = Objects.requireNonNull(transferId, "transferId");
-        this.accountId = Objects.requireNonNull(accountId, "accountId");
-        this.direction = direction;
-        this.amount = amount.requirePositive().amount();
-        this.status = status;
-        this.createdAt = now;
+    private final String transferId;
+    private final UUID accountId;
+    private final Direction direction;
+    private final Money amount;
+    private final Instant createdAt;
+    private final Long version;
+    private Status status;
+    private Instant returnedAt;
+
+    private Transfer(State state) {
+        this.transferId = Objects.requireNonNull(state.transferId(), "transferId");
+        this.accountId = Objects.requireNonNull(state.accountId(), "accountId");
+        this.direction = Objects.requireNonNull(state.direction(), "direction");
+        this.amount = state.amount().requirePositive();
+        this.status = Objects.requireNonNull(state.status(), "status");
+        this.createdAt = Objects.requireNonNull(state.createdAt(), "createdAt");
+        this.returnedAt = state.returnedAt();
+        this.version = state.version();
+        if (status == Status.RETURNED && (direction != Direction.OUT || returnedAt == null)) {
+            throw new IllegalArgumentException("Only a withdrawal can be returned, with a return time: " + state);
+        }
+    }
+
+    private static Transfer create(String transferId, UUID accountId, Direction direction, Money amount,
+            Status status, Instant now) {
+        return new Transfer(new State(transferId, accountId, direction, amount, status, now, null, null));
     }
 
     public static Transfer deposited(String transferId, UUID accountId, Money amount, Instant now) {
-        return new Transfer(transferId, accountId, Direction.IN, amount, Status.COMPLETED, now);
+        return create(transferId, accountId, Direction.IN, amount, Status.COMPLETED, now);
     }
 
     public static Transfer withdrawn(String transferId, UUID accountId, Money amount, Instant now) {
-        return new Transfer(transferId, accountId, Direction.OUT, amount, Status.COMPLETED, now);
+        return create(transferId, accountId, Direction.OUT, amount, Status.COMPLETED, now);
     }
 
     public static Transfer rejected(String transferId, UUID accountId, Money amount, Instant now) {
-        return new Transfer(transferId, accountId, Direction.OUT, amount, Status.REJECTED, now);
+        return create(transferId, accountId, Direction.OUT, amount, Status.REJECTED, now);
+    }
+
+    /** Rebuilds a stored transfer. */
+    public static Transfer restore(State state) {
+        return new Transfer(state);
+    }
+
+    public State state() {
+        return new State(transferId, accountId, direction, amount, status, createdAt, returnedAt, version);
     }
 
     /**
@@ -110,7 +106,7 @@ public class Transfer {
 
     /** The same transfer id for the same movement: a harmless re-send rather than a conflict. */
     public boolean describes(Direction direction, UUID accountId, Money amount) {
-        return this.direction == direction && this.accountId.equals(accountId) && amount().equals(amount);
+        return this.direction == direction && this.accountId.equals(accountId) && this.amount.equals(amount);
     }
 
     public String transferId() {
@@ -126,7 +122,7 @@ public class Transfer {
     }
 
     public Money amount() {
-        return new Money(amount);
+        return amount;
     }
 
     public Status status() {
