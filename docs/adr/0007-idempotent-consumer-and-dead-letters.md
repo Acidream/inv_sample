@@ -29,8 +29,12 @@ and must not block the partition behind them.
   - A return is applied once: the transfer moves `COMPLETED -> RETURNED`; a second return is a no-op.
 
 **Failures** (`KafkaConfig`)
-- Transient errors (DB unavailable, optimistic-lock conflict with a batch job) are retried in place:
-  3 times, 500 ms apart.
+- Transient errors (DB unavailable, optimistic-lock conflict with a batch job) are retried in place
+  **without limit**, backing off exponentially from 500 ms to at most 30 s. A dead letter needs a
+  person and leaves money where Payments doesn't expect it, so a database failover of a few seconds
+  or minutes must not park every instruction in flight. The price: an error that is wrongly treated
+  as transient blocks its partition. **SavingsConsumerLag** reports that, and the fix is to classify
+  the exception as non-retryable.
 - Non-retryable errors go straight to `<topic>.DLT` with the original bytes and exception headers:
   unparseable Protobuf, validation errors, unknown account or transfer, contract violations such
   as returning a withdrawal that was rejected.
@@ -53,9 +57,11 @@ and must not block the partition behind them.
 
 ## Consequences
 
-- `processed_event` and `transfer` grow with traffic. `processed_event` would get a retention window
-  longer than any possible redelivery (e.g. 30 days, partitioned by day and dropped); `transfer` is
-  business data and is kept as long as the ledger.
+- `processed_event` and `transfer` grow with traffic. `RetentionJob` deletes `processed_event` rows
+  after 30 days (`savings.retention.processed-events`), far longer than any redelivery; a transfer
+  re-sent after that is still caught by `transfer_id`. At higher volumes, partitioning by day and
+  dropping partitions would replace the deletes. `transfer` is business data and is kept as long as
+  the ledger.
 - Dead letters need an owner and a runbook: inspect the exception headers, fix the cause (or agree a
   correction with Payments), replay the original bytes to the instructions topic. Replay is safe
   because of both idempotency levels.

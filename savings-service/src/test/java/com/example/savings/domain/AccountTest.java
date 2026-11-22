@@ -30,6 +30,29 @@ class AccountTest {
     }
 
     @Test
+    void entriesAreNumberedInBookingOrder() {
+        var first = account.deposit(Money.of("10.00"), "p1", NOW);
+        var second = account.withdraw(Money.of("4.00"), "p2", NOW);
+        var third = account.creditReturnedWithdrawal(Money.of("4.00"), "p2", NOW);
+
+        assertThat(first.entryNo()).isEqualTo(1);
+        assertThat(second.entryNo()).isEqualTo(2);
+        assertThat(third.entryNo()).isEqualTo(3);
+    }
+
+    @Test
+    void aBookerWhoseClockIsBehindDoesNotBookIntoThePast() {
+        // Instance A books at 09:00:00.500; instance B's clock is 300 ms behind.
+        var onA = account.deposit(Money.of("10.00"), "p1", NOW.plusMillis(500));
+        var onB = account.deposit(Money.of("5.00"), "p2", NOW.plusMillis(200));
+        var later = account.deposit(Money.of("1.00"), "p3", NOW.plusSeconds(1));
+
+        assertThat(onB.bookedAt()).isEqualTo(onA.bookedAt());
+        assertThat(onB.entryNo()).isGreaterThan(onA.entryNo());
+        assertThat(later.bookedAt()).isEqualTo(NOW.plusSeconds(1));
+    }
+
+    @Test
     void withdrawalDebitsAtOnceAndNeverOverdraws() {
         account.deposit(Money.of("100.00"), "t1", NOW);
 

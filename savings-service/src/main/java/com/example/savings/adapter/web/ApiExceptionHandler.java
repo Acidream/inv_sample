@@ -1,6 +1,8 @@
 package com.example.savings.adapter.web;
 
 import com.example.savings.adapter.web.StatementCursorCodec.InvalidCursorException;
+import com.example.savings.application.IdempotencyKeyInUseException;
+import com.example.savings.application.IdempotencyKeyReusedException;
 import com.example.savings.application.UnknownAccountException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -15,6 +17,16 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(UnknownAccountException.class)
     ProblemDetail unknownAccount(UnknownAccountException e) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, e.getMessage());
+    }
+
+    @ExceptionHandler(IdempotencyKeyReusedException.class)
+    ProblemDetail idempotencyKeyReused(IdempotencyKeyReusedException e) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_CONTENT, e.getMessage());
+    }
+
+    @ExceptionHandler(IdempotencyKeyInUseException.class)
+    ProblemDetail idempotencyKeyInUse(IdempotencyKeyInUseException e) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
     }
 
     @ExceptionHandler(InvalidCursorException.class)

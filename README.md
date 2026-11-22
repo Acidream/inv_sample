@@ -68,7 +68,7 @@ sequenceDiagram
 | Books that balance | Every booking published as a double-entry posting, balanced by construction, value-dated | [0014](docs/adr/0014-double-entry-postings-for-finance.md) |
 | No lost or phantom events | Transactional outbox, single ordered relay | [0006](docs/adr/0006-transactional-outbox.md) |
 | At-least-once delivery | De-duplication by message id and by transfer id in the business transaction; retries; alerted dead-letter topic; what Payments must do so nothing is lost | [0007](docs/adr/0007-idempotent-consumer-and-dead-letters.md) |
-| Concurrency | Per-account ordering via partition key, `@Version` optimistic locking, DB constraints | [0008](docs/adr/0008-ordering-and-concurrency.md) |
+| Concurrency | Per-account ordering via partition key, `@Version` optimistic locking, DB constraints, per-account entry numbers independent of instance clocks | [0008](docs/adr/0008-ordering-and-concurrency.md), [0011](docs/adr/0011-ledger-partitioning-and-keyset-pagination.md) |
 | Distributed workflow | Transfers with the current account as a saga with one compensating step; why no holds | [0015](docs/adr/0015-transfers-only-with-the-current-account.md) |
 | Big tables | Monthly partitions, one composite index, keyset pagination | [0011](docs/adr/0011-ledger-partitioning-and-keyset-pagination.md) |
 | Contracts | Protobuf envelope with `oneof`, additive evolution, anti-corruption layer | [0005](docs/adr/0005-protobuf-event-contracts.md) |
@@ -136,8 +136,8 @@ curl -s localhost:8080/accounts/$ACCOUNT/transactions
 
 | Method | Path | |
 |---|---|---|
-| `POST` | `/accounts` | `{ "customerId": uuid, "annualRate": 0.0250 }` → `201` + `Location` |
-| `GET` | `/accounts/{id}` | balance, held, available, accrued interest; amounts as strings |
-| `GET` | `/accounts/{id}/transactions?limit=20&cursor=…` | newest first, keyset-paginated, `nextCursor` |
+| `POST` | `/accounts` | `{ "customerId": uuid, "annualRate": 0.0250 }` → `201` + `Location`. Optional `Idempotency-Key` header: a retry with the same key returns the same account; the key reused for a different body → `422` |
+| `GET` | `/accounts/{id}` | balance and accrued interest; amounts as strings |
+| `GET` | `/accounts/{id}/transactions?limit=20&cursor=…` | newest first, keyset-paginated, `nextCursor`; each entry has its `entryNo` (1, 2, 3, ... per account) |
 
 Errors are [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details.

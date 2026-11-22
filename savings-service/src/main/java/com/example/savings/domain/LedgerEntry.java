@@ -18,6 +18,10 @@ import java.util.UUID;
  * never updates. {@code balanceAfter} makes every entry a self-contained audit record and lets
  * the balance at any point in time be read with a single indexed lookup.
  *
+ * <p>{@code entryNo} numbers an account's entries without gaps, in booking order; {@code bookedAt}
+ * never decreases along it (see {@link Account}). So ordering by (bookedAt, entryNo) is the booking
+ * order. The database {@code id} is not: each instance reserves its own block of sequence values.
+ *
  * <p>The table is range-partitioned by {@code booked_at}, so its primary key is (id, booked_at).
  * Hibernate only needs {@code id} to be unique, which the sequence guarantees.
  */
@@ -32,6 +36,9 @@ public class LedgerEntry {
 
     @Column(nullable = false, updatable = false)
     private UUID accountId;
+
+    @Column(nullable = false, updatable = false)
+    private long entryNo;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, updatable = false)
@@ -54,9 +61,10 @@ public class LedgerEntry {
     protected LedgerEntry() {
     }
 
-    LedgerEntry(UUID accountId, EntryType type, Money amount, Money balanceAfter, String reference,
+    LedgerEntry(UUID accountId, long entryNo, EntryType type, Money amount, Money balanceAfter, String reference,
             Instant bookedAt) {
         this.accountId = accountId;
+        this.entryNo = entryNo;
         this.type = type;
         this.amount = amount.amount();
         this.balanceAfter = balanceAfter.amount();
@@ -70,6 +78,10 @@ public class LedgerEntry {
 
     public UUID accountId() {
         return accountId;
+    }
+
+    public long entryNo() {
+        return entryNo;
     }
 
     public EntryType type() {

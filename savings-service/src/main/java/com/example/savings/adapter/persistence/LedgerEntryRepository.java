@@ -14,7 +14,8 @@ import org.springframework.data.repository.Repository;
 
 /**
  * Extends the bare {@link Repository} on purpose: no delete or bulk update is exposed. Every query
- * below is served by the index (account_id, booked_at desc, id desc).
+ * below is served by the index (account_id, booked_at desc, entry_no desc). Entries are ordered by
+ * (bookedAt, entryNo), which is the booking order (see {@link LedgerEntry}); never by the database id.
  */
 public interface LedgerEntryRepository extends Repository<LedgerEntry, Long>, Ledger {
 
@@ -36,23 +37,23 @@ public interface LedgerEntryRepository extends Repository<LedgerEntry, Long>, Le
     @Override
     default List<LedgerEntry> page(UUID accountId, StatementCursor after, int limit) {
         return after == null
-                ? findByAccountIdOrderByBookedAtDescIdDesc(accountId, Limit.of(limit))
-                : findOlderThan(accountId, after.bookedAt(), after.entryId(), Limit.of(limit));
+                ? findByAccountIdOrderByBookedAtDescEntryNoDesc(accountId, Limit.of(limit))
+                : findOlderThan(accountId, after.bookedAt(), after.entryNo(), Limit.of(limit));
     }
 
     @Query("""
             select e.balanceAfter from LedgerEntry e
             where e.accountId = :accountId and e.bookedAt < :before
-            order by e.bookedAt desc, e.id desc""")
+            order by e.bookedAt desc, e.entryNo desc""")
     List<BigDecimal> findBalancesBefore(UUID accountId, Instant before, Limit limit);
 
-    List<LedgerEntry> findByAccountIdOrderByBookedAtDescIdDesc(UUID accountId, Limit limit);
+    List<LedgerEntry> findByAccountIdOrderByBookedAtDescEntryNoDesc(UUID accountId, Limit limit);
 
     /** Keyset pagination: constant cost per page, unlike OFFSET which scans all skipped rows. */
     @Query("""
             select e from LedgerEntry e
             where e.accountId = :accountId
-              and (e.bookedAt < :bookedAt or (e.bookedAt = :bookedAt and e.id < :entryId))
-            order by e.bookedAt desc, e.id desc""")
-    List<LedgerEntry> findOlderThan(UUID accountId, Instant bookedAt, long entryId, Limit limit);
+              and (e.bookedAt < :bookedAt or (e.bookedAt = :bookedAt and e.entryNo < :entryNo))
+            order by e.bookedAt desc, e.entryNo desc""")
+    List<LedgerEntry> findOlderThan(UUID accountId, Instant bookedAt, long entryNo, Limit limit);
 }

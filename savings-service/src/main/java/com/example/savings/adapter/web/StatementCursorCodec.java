@@ -5,14 +5,14 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Base64;
 
-/** Opaque cursor for clients: base64url of "bookedAt|entryId". */
+/** Opaque cursor for clients: base64url of "bookedAt|entryNo". */
 final class StatementCursorCodec {
 
     private StatementCursorCodec() {
     }
 
     static String encode(StatementCursor cursor) {
-        var raw = cursor.bookedAt() + "|" + cursor.entryId();
+        var raw = cursor.bookedAt() + "|" + cursor.entryNo();
         return Base64.getUrlEncoder().withoutPadding().encodeToString(raw.getBytes(StandardCharsets.UTF_8));
     }
 

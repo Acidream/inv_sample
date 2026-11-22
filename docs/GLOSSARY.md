@@ -7,7 +7,8 @@ Terms as they are used in code, events and docs. If code and glossary disagree, 
 | **Account** | A customer's EUR savings account with a fixed variable rate. The aggregate that guards every balance change. | `domain.Account` |
 | **Balance** | Money on the account according to the ledger. Never negative: the account and the database refuse it. | `Account.balance()` |
 | **Ledger** | Append-only list of bookings per account. Never updated or deleted; corrections are new entries. | `domain.LedgerEntry`, `ledger_entry` |
-| **Ledger entry** | One booking: type (DEPOSIT, WITHDRAWAL, WITHDRAWAL_RETURN, INTEREST), signed amount, balance after, business reference, booking time. | `LedgerEntry` |
+| **Ledger entry** | One booking: entry number, type (DEPOSIT, WITHDRAWAL, WITHDRAWAL_RETURN, INTEREST), signed amount, balance after, business reference, booking time. | `LedgerEntry` |
+| **Entry number** | Numbers an account's ledger entries 1, 2, 3, ... in booking order. With the booking time, which never goes backwards on one account, it defines the order of the ledger. | `LedgerEntry.entryNo` |
 | **Current account** | The customer's main account at the bank, owned by another team. The only place savings money comes from or goes to. | not modelled |
 | **Payments** | The team that orchestrates transfers between current account and savings, and makes external payments from the current account. | `payments.v1.PaymentInstruction` |
 | **Payment instruction** | A message from Payments: TransferFromCurrentAccount, TransferToCurrentAccount or TransferReturned. | `payments.v1.PaymentInstruction`, `application.PaymentInstruction` |

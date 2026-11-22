@@ -23,6 +23,39 @@ Feature: Opening and viewing savings accounts
     And match opened.customerId == customerId
     And match opened.annualRate == '0.0250'
 
+  Scenario: a retried opening request with the same Idempotency-Key opens one account
+    * def customerId = hooks.uuid()
+    * def key = hooks.uuid()
+    Given path 'accounts'
+    And header Idempotency-Key = key
+    And request { customerId: '#(customerId)', annualRate: 0.025 }
+    When method post
+    Then status 201
+    * def first = response
+
+    Given path 'accounts'
+    And header Idempotency-Key = key
+    And request { customerId: '#(customerId)', annualRate: 0.025 }
+    When method post
+    Then status 201
+    And match response.id == first.id
+    And match responseHeaders['Location'][0] == '/accounts/' + first.id
+
+  Scenario: an Idempotency-Key reused for a different request is refused
+    * def key = hooks.uuid()
+    Given path 'accounts'
+    And header Idempotency-Key = key
+    And request { customerId: '#(hooks.uuid())', annualRate: 0.025 }
+    When method post
+    Then status 201
+
+    Given path 'accounts'
+    And header Idempotency-Key = key
+    And request { customerId: '#(hooks.uuid())', annualRate: 0.025 }
+    When method post
+    Then status 422
+    And match response.detail contains 'already used for a different request'
+
   Scenario: an unknown account is a 404 problem
     Given path 'accounts', hooks.uuid()
     When method get

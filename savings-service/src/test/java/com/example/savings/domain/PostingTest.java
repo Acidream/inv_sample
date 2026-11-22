@@ -25,7 +25,8 @@ class PostingTest {
 
     @Test
     void depositMovesMoneyFromTransferClearingToTheCustomer() {
-        var entry = new LedgerEntry(ACCOUNT, EntryType.DEPOSIT, Money.of("100.00"), Money.of("100.00"), "pay-1", NOON);
+        var entry = new LedgerEntry(ACCOUNT, 1, EntryType.DEPOSIT, Money.of("100.00"), Money.of("100.00"), "pay-1",
+                NOON);
 
         var posting = Posting.of(entry, BERLIN);
 
@@ -37,7 +38,7 @@ class PostingTest {
 
     @Test
     void withdrawalMovesMoneyFromTheCustomerToClearing() {
-        var entry = new LedgerEntry(ACCOUNT, EntryType.WITHDRAWAL, Money.of("-40.00"), Money.of("60.00"), "wd-1",
+        var entry = new LedgerEntry(ACCOUNT, 1, EntryType.WITHDRAWAL, Money.of("-40.00"), Money.of("60.00"), "wd-1",
                 NOON);
 
         var posting = Posting.of(entry, BERLIN);
@@ -49,7 +50,7 @@ class PostingTest {
 
     @Test
     void aReturnedWithdrawalMovesTheMoneyBackToTheCustomer() {
-        var entry = new LedgerEntry(ACCOUNT, EntryType.WITHDRAWAL_RETURN, Money.of("40.00"), Money.of("100.00"),
+        var entry = new LedgerEntry(ACCOUNT, 1, EntryType.WITHDRAWAL_RETURN, Money.of("40.00"), Money.of("100.00"),
                 "wd-1", NOON);
 
         var posting = Posting.of(entry, BERLIN);
@@ -61,7 +62,7 @@ class PostingTest {
 
     @Test
     void interestPayoutSettlesThePayableToTheCustomer() {
-        var entry = new LedgerEntry(ACCOUNT, EntryType.INTEREST, Money.of("3.10"), Money.of("1003.10"),
+        var entry = new LedgerEntry(ACCOUNT, 1, EntryType.INTEREST, Money.of("3.10"), Money.of("1003.10"),
                 "interest:2026-01", NOON);
 
         var posting = Posting.of(entry, BERLIN);
@@ -88,7 +89,7 @@ class PostingTest {
     void valueDateIsTheBusinessDayNotTheUtcDay() {
         // 23:30 UTC on 31 January is already 1 February in Berlin.
         var lateEvening = Instant.parse("2026-01-31T23:30:00Z");
-        var entry = new LedgerEntry(ACCOUNT, EntryType.DEPOSIT, Money.of("1.00"), Money.of("1.00"), "pay-2",
+        var entry = new LedgerEntry(ACCOUNT, 1, EntryType.DEPOSIT, Money.of("1.00"), Money.of("1.00"), "pay-2",
                 lateEvening);
 
         assertThat(Posting.of(entry, BERLIN).valueDate()).isEqualTo(LocalDate.parse("2026-02-01"));

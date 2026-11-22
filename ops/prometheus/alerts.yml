@@ -20,6 +20,26 @@ groups:
         annotations:
           summary: "{{ $value }} account events waiting in the outbox"
 
+      - alert: SavingsInterestBehind
+        # Some account hasn't accrued yesterday's interest long after the nightly run (00:15 Berlin):
+        # the run didn't happen or didn't finish, or an account fails every night. Customers are owed
+        # interest that isn't booked (runbook: ADR 0010; the job log names the failing accounts).
+        expr: max(savings_interest_accrual_lag_days) > 0
+        for: 6h
+        labels:
+          severity: page
+        annotations:
+          summary: "Interest is {{ $value }} day(s) behind for at least one account"
+
+      - alert: SavingsInterestAccrualFailed
+        # An account's accrual failed with something other than a lock conflict. The job went on with
+        # the other accounts and the next run retries it; SavingsInterestBehind pages if it keeps failing.
+        expr: increase(savings_interest_accrual_failed_total[1h]) > 0
+        labels:
+          severity: warn
+        annotations:
+          summary: "{{ $value }} accounts failed to accrue interest"
+
       - alert: SavingsConsumerLag
         expr: max(kafka_consumer_fetch_manager_records_lag_max{application="savings-service"}) > 1000
         for: 10m

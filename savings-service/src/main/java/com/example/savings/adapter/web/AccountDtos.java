@@ -37,11 +37,12 @@ final class AccountDtos {
         }
     }
 
-    record EntryResponse(long id, String type, String amount, String balanceAfter, String reference,
-            Instant bookedAt) {
+    /** {@code entryNo} numbers the account's entries 1, 2, 3, ... in booking order. */
+    record EntryResponse(long id, long entryNo, String type, String amount, String balanceAfter,
+            String reference, Instant bookedAt) {
 
         static EntryResponse from(LedgerEntry entry) {
-            return new EntryResponse(entry.id(), entry.type().name(), entry.amount().toString(),
+            return new EntryResponse(entry.id(), entry.entryNo(), entry.type().name(), entry.amount().toString(),
                     entry.balanceAfter().toString(), entry.reference(), entry.bookedAt());
         }
     }

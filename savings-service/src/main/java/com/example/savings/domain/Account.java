@@ -20,6 +20,11 @@ import java.util.UUID;
  * {@link LedgerEntry}; the cached {@code balance} always equals the {@code balanceAfter} of the
  * latest entry. {@code @Version} turns concurrent modifications into optimistic-lock failures
  * instead of lost updates.
+ *
+ * <p>The account also numbers its entries ({@code entryNo} 1, 2, 3, ...) and never books one earlier
+ * than the previous one. Bookings can come from different instances whose clocks differ slightly;
+ * without this, a later entry could get an earlier {@code bookedAt} and sort before the entry whose
+ * balance it builds on.
  */
 @Entity
 @Table(name = "account")
@@ -49,6 +54,14 @@ public class Account {
     @Column(nullable = false, updatable = false)
     private Instant openedAt;
 
+    /** Number of the latest ledger entry; 0 before the first booking. */
+    @Column(nullable = false)
+    private long lastEntryNo;
+
+    /** {@code bookedAt} of the latest ledger entry ({@code openedAt} before the first booking). */
+    @Column(nullable = false)
+    private Instant lastBookedAt;
+
     @Version
     private Long version;
 
@@ -68,6 +81,8 @@ public class Account {
         account.accruedInterest = BigDecimal.ZERO.setScale(Interest.ACCRUAL_SCALE);
         account.lastAccrualDate = LocalDate.ofInstant(now, zone).minusDays(1);
         account.openedAt = now;
+        account.lastEntryNo = 0;
+        account.lastBookedAt = now;
         return account;
     }
 
@@ -136,7 +151,10 @@ public class Account {
     private LedgerEntry book(EntryType type, Money signedAmount, String reference, Instant now) {
         var newBalance = balance().plus(signedAmount);
         balance = newBalance.amount();
-        return new LedgerEntry(id, type, signedAmount, newBalance, reference, now);
+        // A clock behind the previous booker's must not book into the past.
+        lastBookedAt = now.isAfter(lastBookedAt) ? now : lastBookedAt;
+        lastEntryNo++;
+        return new LedgerEntry(id, lastEntryNo, type, signedAmount, newBalance, reference, lastBookedAt);
     }
 
     public UUID id() {

@@ -14,10 +14,16 @@ announces something that never happened (Kafka sent, DB rolled back).
   serializes the Protobuf event and inserts it into `outbox_event` in the **same transaction**
   (`Propagation.MANDATORY` makes calling it outside a transaction a bug, not a silent loss).
 - **Read side:** `OutboxRelay` polls every 200 ms: `select … where published_at is null order by id
-  limit 100 for update skip locked`, sends all rows, waits for the broker acks, then marks them
+  limit 100 for update`, sends all rows, waits for the broker acks, then marks them
   published in the same DB transaction.
 - The relay runs on **one instance at a time** (ShedLock). With a single relay reading in `id` order
-  and an idempotent producer, events of one account reach Kafka in commit order.
+  and an idempotent producer, events of one account reach Kafka in commit order. Two guards keep it
+  that way:
+  - One drain is **time-boxed** (60 s, plus at most 30 s for the last batch's acks) and the lock lasts
+    5 min, so the lock can't expire while a relay is still sending and let a second relay start.
+  - Rows are locked with plain `for update`, **not `skip locked`**: a second relay, should one run
+    anyway, waits for the first one's batch instead of skipping ahead and sending newer events of the
+    same account first.
 - Delivery is **at-least-once**: a crash after the send but before the update re-sends the batch.
   Consumers de-duplicate on `event_id` (as Savings itself does, ADR 0007).
 
@@ -31,6 +37,8 @@ announces something that never happened (Kafka sent, DB rolled back).
 
 - Events are delayed by up to one poll interval.
 - The DB transaction is open while Kafka acks a batch (bounded to 100 rows / 30 s timeout).
-- `outbox_event` grows; published rows should be deleted by a retention job (not built). A partial
-  index on unpublished rows keeps polling fast regardless.
+- If the instance holding the lock dies, relaying stops until the lock expires (up to 5 min); the
+  **SavingsOutboxBacklog** alert fires after 5 min of backlog.
+- Published rows are deleted after 7 days by `RetentionJob` (`savings.retention.published-outbox-events`).
+  A partial index on unpublished rows keeps polling fast regardless.
 - Monitoring: `savings_outbox_pending` gauge and the `SavingsOutboxBacklog` alert (ADR 0013).

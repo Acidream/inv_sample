@@ -16,17 +16,24 @@ import org.springframework.kafka.listener.CommonErrorHandler;
 import org.springframework.kafka.listener.ConsumerRecordRecoverer;
 import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
 import org.springframework.kafka.listener.DefaultErrorHandler;
-import org.springframework.util.backoff.FixedBackOff;
+import org.springframework.util.backoff.ExponentialBackOff;
 
 @Configuration
 class KafkaConfig {
 
     static final String DLT_SUFFIX = ".DLT";
+    static final long INITIAL_RETRY_INTERVAL_MS = 500;
+    static final long MAX_RETRY_INTERVAL_MS = 30_000;
 
     /**
-     * Transient failures (DB hiccup, optimistic-lock conflict with a batch job) are retried a few times.
      * Messages that can never succeed - unparseable, invalid, or contradicting an earlier transfer -
      * go straight to the dead-letter topic so they don't block the partition.
+     *
+     * <p>Everything else is treated as transient (database failover, optimistic-lock conflict with a
+     * batch job) and retried <em>without limit</em>, backing off up to {@link #MAX_RETRY_INTERVAL_MS}.
+     * A dead letter needs a person; an outage of a few seconds or minutes must not park every
+     * instruction in flight. A message that keeps failing blocks its partition, which the consumer-lag
+     * alert reports.
      */
     @Bean
     CommonErrorHandler kafkaErrorHandler(KafkaTemplate<String, byte[]> template, MeterRegistry registry,
@@ -41,7 +48,10 @@ class KafkaConfig {
             deadLetters.accept(record, ex);
             deadLettered.increment();
         };
-        var handler = new DefaultErrorHandler(recoverer, new FixedBackOff(500L, 3));
+        var backOff = new ExponentialBackOff(INITIAL_RETRY_INTERVAL_MS, 2.0);
+        backOff.setMaxInterval(MAX_RETRY_INTERVAL_MS);
+        // Default max elapsed time and attempts are unlimited: transient errors never dead-letter.
+        var handler = new DefaultErrorHandler(recoverer, backOff);
         handler.addNotRetryableExceptions(
                 InvalidProtocolBufferException.class,
                 IllegalArgumentException.class,

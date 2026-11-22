@@ -3,6 +3,7 @@ package com.example.savings.application.port;
 import com.example.savings.domain.Account;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -18,4 +19,7 @@ public interface Accounts {
 
     /** Keyset-paginated ids of accounts whose interest is not yet accrued through {@code through}. */
     List<UUID> idsDueForAccrual(LocalDate through, UUID after, int limit);
+
+    /** The earliest {@code lastAccrualDate} of any account; empty if there are no accounts. */
+    Optional<LocalDate> oldestAccrualDate();
 }

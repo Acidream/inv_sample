@@ -23,12 +23,14 @@ instructions that can't be applied.
 | `savings_messages_dead_lettered_total{topic}` | counter | Instructions parked on the dead-letter topic |
 | `savings_outbox_pending` | gauge | Events committed but not yet in Kafka |
 | `savings_outbox_published_total` | counter | Relay throughput |
+| `savings_interest_accrual_failed_total` | counter | Accounts whose nightly accrual failed (other than a lock conflict) |
+| `savings_interest_accrual_lag_days` | gauge | Complete days the account furthest behind has not accrued yet |
 | `kafka_consumer_fetch_manager_records_lag_max` | gauge | Consumer lag (Kafka client metric) |
 
 - docker-compose runs Prometheus with alert rules (`ops/prometheus/alerts.yml`) and Grafana with a
   provisioned dashboard (`ops/grafana/dashboards/savings.json`).
-- Alerts: **SavingsInstructionDeadLettered** (page),
-  **SavingsOutboxBacklog** (page), **SavingsConsumerLag** (warn).
+- Alerts: **SavingsInstructionDeadLettered** (page), **SavingsOutboxBacklog** (page),
+  **SavingsInterestBehind** (page), **SavingsConsumerLag** (warn), **SavingsInterestAccrualFailed** (warn).
 - Counters behind an `increase()` alert are registered at start-up with value 0. Micrometer creates
   a counter on first use, and Prometheus can't compute an increase for a series that jumps from
   absent to 1, so the first dead letter would never alert.

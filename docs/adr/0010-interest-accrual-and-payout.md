@@ -22,11 +22,18 @@ missed or repeated job runs, over a table with potentially millions of accounts.
 **Execution** (`InterestAccrualJob`, `InterestService`)
 - Nightly at 00:15 Berlin time, on one instance (ShedLock).
 - Walks accounts due for accrual in **keyset-paginated chunks** of 500 (`where id > :last order by id`),
-  one transaction per account, so a failure affects one account and locks stay short.
+  one transaction per account, so locks stay short. A failure affects only its account: the job
+  logs it, counts it (`savings_interest_accrual_failed_total`) and continues with the next account;
+  the next run retries it.
 - **Catch-up:** each account accrues every day from its `last_accrual_date + 1` through yesterday.
-  Because each day uses that day's closing balance from the ledger, a missed night gives the same
-  result as running every night. Running twice is a no-op.
+  Because each day uses that day's closing balance from the ledger, a missed night accrues the same
+  amounts for the same days, with one exception: a payout made during the catch-up (see the known
+  simplification below). Running twice is a no-op.
 - Optimistic-lock conflicts with live traffic skip the account until the next run (ADR 0008).
+- **Monitoring** (ADR 0013): `savings_interest_accrual_lag_days` is the number of complete days the
+  account furthest behind has not accrued yet. It is 0 during the day and 1 from midnight until the run
+  finishes; **SavingsInterestBehind** pages when it stays above 0 for 6 h (a run that never happened,
+  or an account that fails every night). **SavingsInterestAccrualFailed** warns on any failure.
 
 ## Consequences
 

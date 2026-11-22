@@ -68,6 +68,7 @@ Feature: Deposits arrive from the customer's current account via Kafka
     Then status 200
     And match response.items[*].amount == ['30.00', '20.00']
     And match response.items[*].balanceAfter == ['60.00', '30.00']
+    And match response.items[*].entryNo == [3, 2]
     And match each response.items contains { type: 'DEPOSIT' }
     And match response.nextCursor == '#string'
 
@@ -77,6 +78,7 @@ Feature: Deposits arrive from the customer's current account via Kafka
     When method get
     Then status 200
     And match response.items[*].amount == ['10.00']
+    And match response.items[*].entryNo == [1]
     And match response.nextCursor == null
 
   Scenario: a garbage cursor is a client error
