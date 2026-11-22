@@ -16,16 +16,17 @@ Checkstyle · GitHub Actions
 
 ```mermaid
 flowchart LR
-    Client -- "REST: open account,<br/>balance, statement" --> S
-    P[Payments team] -- "payments.savings-instructions.v1<br/>TransferFromCurrentAccount · TransferToCurrentAccount<br/>TransferReturned" --> S
+    Client -- "REST: open account,<br/>balance, statement" --> API
+    P[Payments team] -- "payments.savings-instructions.v1<br/>TransferFromCurrentAccount<br/>TransferToCurrentAccount<br/>TransferReturned" --> L
     subgraph S [savings-service]
-        direction TB
-        UC[use cases] --> DB[(Postgres<br/>accounts · transfers · ledger<br/>outbox · processed events)]
-        J[nightly job<br/>interest] --> UC
-        R[outbox relay] --> DB
+        API[REST API] --> UC[use cases]
+        L[instruction listener] --> UC
+        J[nightly interest job] --> UC
+        UC --> DB[(Postgres<br/>accounts · transfers · ledger<br/>outbox · processed events)]
+        DB --> R[outbox relay]
     end
-    R -- "savings.account-events.v1<br/>AccountOpened · MoneyDeposited · MoneyWithdrawn<br/>WithdrawalRejected · WithdrawalReturned · InterestPaid" --> C[other teams]
-    R -- "savings.postings.v1<br/>balanced double-entry postings" --> F[Finance / general ledger]
+    R -- "savings.account-events.v1<br/>AccountOpened · MoneyDeposited<br/>MoneyWithdrawn · WithdrawalRejected<br/>WithdrawalReturned · InterestPaid" --> C[other teams]
+    R -- "savings.postings.v1<br/>balanced double-entry<br/>postings" --> F[Finance:<br/>general ledger]
     S -. metrics .-> Prom[Prometheus / Grafana]
 ```
 
@@ -54,10 +55,39 @@ sequenceDiagram
             P->>S: TransferReturned
             S-->>P: WithdrawalReturned (credited back)
         end
-    else
+    else balance too low
         S-->>P: WithdrawalRejected
     end
 ```
+
+## Assumptions
+
+What the design takes as given. Each one is a decision recorded in an ADR, and changing it would
+change the design.
+
+- **Savings keeps a customer ledger, not the bank's books.** The `ledger_entry` table is a
+  *single-entry* record per account: signed amount, balance after, business reference. It is the
+  customer's view and the source of truth for balances, statements and interest. The bank's
+  **general ledger is a separate system owned by Finance**; Savings is a sub-ledger that feeds it
+  ([ADR 0004](docs/adr/0004-money-and-append-only-ledger.md),
+  [0014](docs/adr/0014-double-entry-postings-for-finance.md)).
+- **No double-entry bookkeeping inside Savings.** There is no journal, no chart of accounts and no
+  trial balance here. Every booking and every daily interest accrual is *published* as a balanced
+  double-entry posting on logical book accounts (`customer:<id>`, `transfer-clearing`,
+  `interest-expense`, `interest-payable`); Finance maps them to its chart of accounts and keeps the
+  books. What Finance can reconcile against Savings: the customer lines of an account sum to that
+  account's ledger balance, and `transfer-clearing` nets to zero per transfer
+  ([0014](docs/adr/0014-double-entry-postings-for-finance.md)). A full double-entry core inside
+  Savings was considered and rejected as more than one product needs.
+- **Money only moves to and from the customer's own current account**, so every transfer has a
+  known outcome at once, and there are no holds and no negative balances
+  ([0015](docs/adr/0015-transfers-only-with-the-current-account.md)).
+- **Payments keeps its side of the contract:** it keys instructions by account id, publishes through
+  its own outbox, treats Savings' events as the acknowledgement and reconciles daily
+  ([0007](docs/adr/0007-idempotent-consumer-and-dead-letters.md),
+  [0008](docs/adr/0008-ordering-and-concurrency.md)).
+- **One currency (EUR), one business time zone (Europe/Berlin)**, one fixed rate per account; no
+  taxes, campaigns, account closing or authentication ([0001](docs/adr/0001-scope-savings-only.md)).
 
 ## Where the interesting decisions are
 
@@ -111,7 +141,7 @@ The acceptance features are the best entry point into the behaviour:
 docker compose up --build
 ```
 
-| | |
+| What | Where |
 |---|---|
 | API docs | http://localhost:8080/swagger-ui.html |
 | Metrics | http://localhost:8080/actuator/prometheus |
