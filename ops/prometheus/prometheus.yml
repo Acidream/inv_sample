@@ -1,0 +1,14 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 15s
+
+rule_files:
+  - alerts.yml
+
+scrape_configs:
+  - job_name: savings-service
+    metrics_path: /actuator/prometheus
+    # Prometheus 3 also asks for text format 1.0.0, which the actuator answers with 406.
+    scrape_protocols: [OpenMetricsText1.0.0, PrometheusText0.0.4]
+    static_configs:
+      - targets: ["savings-service:8080"]

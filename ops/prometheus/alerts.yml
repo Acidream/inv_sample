@@ -1,0 +1,28 @@
+groups:
+  - name: savings
+    rules:
+      - alert: SavingsAccountOverdrawn
+        # A late withdrawal confirmation was booked after its hold had expired and the funds were
+        # spent again. Money is owed by the customer: operations must follow up.
+        expr: increase(savings_negative_balance_total[10m]) > 0
+        labels:
+          severity: page
+        annotations:
+          summary: "A savings account was overdrawn by a late withdrawal confirmation"
+
+      - alert: SavingsOutboxBacklog
+        # Events are committed but not reaching Kafka (broker down, relay stuck, lock not released).
+        expr: savings_outbox_pending > 100
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "{{ $value }} account events waiting in the outbox"
+
+      - alert: SavingsConsumerLag
+        expr: max(kafka_consumer_fetch_manager_records_lag_max{application="savings-service"}) > 1000
+        for: 10m
+        labels:
+          severity: warn
+        annotations:
+          summary: "Savings is falling behind on payment instructions"

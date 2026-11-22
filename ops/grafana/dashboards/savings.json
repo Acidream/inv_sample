@@ -1,0 +1,82 @@
+{
+  "uid": "savings",
+  "title": "Savings",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "tags": ["savings"],
+  "panels": [
+    { "type": "row", "title": "Business", "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 } },
+    {
+      "type": "timeseries", "title": "Deposits per minute",
+      "gridPos": { "x": 0, "y": 1, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "sum(rate(savings_deposits_total[5m])) * 60", "legendFormat": "deposits/min" }]
+    },
+    {
+      "type": "timeseries", "title": "Withdrawals per minute by outcome",
+      "gridPos": { "x": 8, "y": 1, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "sum by (outcome) (rate(savings_withdrawals_total[5m])) * 60", "legendFormat": "{{outcome}}" }]
+    },
+    {
+      "type": "stat", "title": "Overdrawn by late confirmation (24h)",
+      "gridPos": { "x": 16, "y": 1, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [
+        { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } } },
+      "targets": [{ "refId": "A", "expr": "sum(increase(savings_negative_balance_total[24h])) or vector(0)" }]
+    },
+    {
+      "type": "stat", "title": "Deposited (EUR, 24h)",
+      "gridPos": { "x": 0, "y": 9, "w": 8, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "currencyEUR" } },
+      "targets": [{ "refId": "A", "expr": "sum(increase(savings_deposits_amount_euros_total[24h])) or vector(0)" }]
+    },
+    {
+      "type": "stat", "title": "Interest paid (EUR, 31d)",
+      "gridPos": { "x": 8, "y": 9, "w": 8, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "currencyEUR" } },
+      "targets": [{ "refId": "A", "expr": "sum(increase(savings_interest_paid_euros_total[31d])) or vector(0)" }]
+    },
+    {
+      "type": "timeseries", "title": "Duplicate messages skipped per minute",
+      "gridPos": { "x": 16, "y": 9, "w": 8, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "sum(rate(savings_messages_duplicate_total[5m])) * 60", "legendFormat": "duplicates/min" }]
+    },
+    { "type": "row", "title": "Messaging", "gridPos": { "x": 0, "y": 15, "w": 24, "h": 1 } },
+    {
+      "type": "timeseries", "title": "Outbox: pending vs published/min",
+      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "savings_outbox_pending", "legendFormat": "pending" },
+        { "refId": "B", "expr": "sum(rate(savings_outbox_published_total[5m])) * 60", "legendFormat": "published/min" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Consumer lag (payment instructions)",
+      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "max(kafka_consumer_fetch_manager_records_lag_max)", "legendFormat": "max lag" }]
+    },
+    { "type": "row", "title": "Service", "gridPos": { "x": 0, "y": 24, "w": 24, "h": 1 } },
+    {
+      "type": "timeseries", "title": "HTTP requests per second by status",
+      "gridPos": { "x": 0, "y": 25, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "sum by (status) (rate(http_server_requests_seconds_count[1m]))", "legendFormat": "{{status}}" }]
+    },
+    {
+      "type": "timeseries", "title": "HTTP mean latency",
+      "gridPos": { "x": 12, "y": 25, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [{ "refId": "A", "expr": "sum(rate(http_server_requests_seconds_sum[1m])) / sum(rate(http_server_requests_seconds_count[1m]))", "legendFormat": "mean" }]
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+apiVersion: 1
+providers:
+  - name: savings
+    folder: Savings
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards
