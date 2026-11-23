@@ -13,7 +13,8 @@ import org.springframework.stereotype.Component;
 /**
  * Fails requests whose accounts never became known, e.g. a typo in an account id. A request for an
  * account that was just opened waits a moment instead: its opening event and the request travel on
- * different topics and may arrive in either order.
+ * different topics and may arrive in either order. The wait counts from when this service received
+ * the request, so a request delivered late gets the full timeout too (ADR 0023).
  */
 @Component
 public class AwaitingAccountsJob {

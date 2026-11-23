@@ -134,3 +134,15 @@ Feature: Opening current accounts, incoming payments and blocking (ADR 0021)
     * hooks.sendPaymentWithOverlongId(accountId)
     * def cause = hooks.awaitDeadLetter('current-account.commands.v1', accountId)
     * match cause == 'java.lang.IllegalArgumentException'
+
+  Scenario: a malformed payment id in the path is refused before anything is accepted
+    Given path 'current-accounts', hooks.uuid(), 'incoming-payments', 'p!1'
+    And request { amount: '1.00' }
+    When method put
+    Then status 400
+
+  Scenario: a page size out of range is refused
+    Given path 'current-accounts', hooks.uuid(), 'bookings'
+    And param limit = 0
+    When method get
+    Then status 400

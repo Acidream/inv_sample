@@ -2,7 +2,7 @@ package com.example.platform.messaging;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.time.Clock;
+import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -26,7 +26,6 @@ class TablesTest {
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17-alpine");
 
-    private static final Instant NOW = Instant.parse("2026-11-23T03:30:00Z");
     private static JdbcClient jdbc;
 
     @BeforeAll
@@ -71,14 +70,27 @@ class TablesTest {
     }
 
     @Test
-    void retentionDeletesOnlyWhatIsOldEnough() {
-        insertOutbox(NOW.minus(Duration.ofDays(8)));          // published long ago: deleted
-        insertOutbox(NOW.minus(Duration.ofDays(6)));          // published recently: kept
-        insertOutbox(null);                                   // never published: kept, however old
-        insertProcessed("old", NOW.minus(Duration.ofDays(31)));
-        insertProcessed("recent", NOW.minus(Duration.ofDays(29)));
+    void retentionMeasuresAgeOnTheDatabaseClock() {
+        // Rows written by the database a moment ago are fresh, whatever a service's Clock says.
+        new Outbox(jdbc).add("topic.v1", "key-1", "OPENED", new byte[] {1});
+        jdbc.sql("update outbox_event set published_at = now()").update();
+        new ProcessedMessages(jdbc).markProcessed("command:1");
 
-        new RetentionJob(jdbc, Clock.fixed(NOW, ZoneOffset.UTC), Duration.ofDays(7), Duration.ofDays(30)).run();
+        new RetentionJob(jdbc, Duration.ofDays(7), Duration.ofDays(30)).run();
+
+        assertThat(jdbc.sql("select count(*) from outbox_event").query(Long.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("select count(*) from processed_message").query(Long.class).single()).isEqualTo(1);
+    }
+
+    @Test
+    void retentionDeletesOnlyWhatIsOldEnough() {
+        insertOutbox(now().minus(Duration.ofDays(8)));          // published long ago: deleted
+        insertOutbox(now().minus(Duration.ofDays(6)));          // published recently: kept
+        insertOutbox(null);                                   // never published: kept, however old
+        insertProcessed("old", now().minus(Duration.ofDays(31)));
+        insertProcessed("recent", now().minus(Duration.ofDays(29)));
+
+        new RetentionJob(jdbc, Duration.ofDays(7), Duration.ofDays(30)).run();
 
         assertThat(jdbc.sql("select count(*) from outbox_event").query(Long.class).single()).isEqualTo(2);
         assertThat(jdbc.sql("select count(*) from outbox_event where published_at is null").query(Long.class)
@@ -92,13 +104,18 @@ class TablesTest {
         jdbc.sql("""
                 insert into processed_message (message_id, processed_at)
                 select 'id-' || n, :at from generate_series(1, :count) n""")
-                .param("at", NOW.minus(Duration.ofDays(40)).atOffset(ZoneOffset.UTC))
+                .param("at", now().minus(Duration.ofDays(40)).atOffset(ZoneOffset.UTC))
                 .param("count", RetentionJob.BATCH_SIZE * 2 + 1)
                 .update();
 
-        new RetentionJob(jdbc, Clock.fixed(NOW, ZoneOffset.UTC), Duration.ofDays(7), Duration.ofDays(30)).run();
+        new RetentionJob(jdbc, Duration.ofDays(7), Duration.ofDays(30)).run();
 
         assertThat(jdbc.sql("select count(*) from processed_message").query(Long.class).single()).isZero();
+    }
+
+    /** The database's clock, which the retention job measures against. */
+    private static Instant now() {
+        return jdbc.sql("select now()").query(Timestamp.class).single().toInstant();
     }
 
     private static void insertOutbox(Instant publishedAt) {

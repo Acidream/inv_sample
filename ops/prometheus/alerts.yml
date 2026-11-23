@@ -40,10 +40,29 @@ groups:
         annotations:
           summary: "{{ $value }} accounts failed to accrue interest"
 
-      - alert: SavingsConsumerLag
-        expr: max(kafka_consumer_fetch_manager_records_lag_max{application="savings-service"}) > 1000
+      - alert: ConsumerBlocked
+        # A consumer thread's lag hasn't been zero once in 15 minutes: a message is retried without end
+        # (ADR 0007) and blocks its partition, or the service can't keep up at all. Every service.
+        expr: max by (application) (min_over_time(kafka_consumer_fetch_manager_records_lag_max[15m])) > 0
+        labels:
+          severity: page
+        annotations:
+          summary: "{{ $labels.application }} has not caught up on a partition for 15 minutes"
+
+      - alert: ConsumerLag
+        expr: max by (application) (kafka_consumer_fetch_manager_records_lag_max) > 1000
         for: 10m
         labels:
           severity: warn
         annotations:
-          summary: "Savings is falling behind on payment instructions"
+          summary: "{{ $labels.application }} is {{ $value }} messages behind"
+
+      - alert: TransferStuck
+        # A transfer has waited longer than transfers.stuck-after for a ledger's answer (ADR 0023): an
+        # instruction or an answer was dead-lettered, or a bug. Money may sit on transfer-clearing.
+        expr: max(transfers_stuck) > 0
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "{{ $value }} transfers are waiting too long for a ledger's answer"

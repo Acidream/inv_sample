@@ -26,7 +26,7 @@ import org.springframework.util.backoff.ExponentialBackOff;
  * treated as transient (database failover, a lock conflict) and retried <em>without limit</em>,
  * backing off up to {@link #MAX_RETRY_INTERVAL_MS}: a dead letter needs a person, and an outage of
  * a few minutes must not park every message in flight. A message that keeps failing blocks its
- * partition, which the consumer-lag alert reports.
+ * partition, which the {@code ConsumerBlocked} alert reports for every service.
  *
  * <p>Metric: {@code messages.dead.lettered}, tagged with the topic the message came from.
  */

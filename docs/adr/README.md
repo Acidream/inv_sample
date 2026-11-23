@@ -27,3 +27,4 @@ Format: [Michael Nygard](https://cognitect.com/blog/2011/11/15/documenting-archi
 | [0020](0020-open-and-fund-a-savings-product.md) | Opening a savings product: one order that opens the account, then asks for the money | Accepted |
 | [0021](0021-current-account-service.md) | The current account service: overdraft, blocking, incoming payments | Accepted |
 | [0022](0022-shared-technical-library.md) | A shared technical library for messaging; domain types stay per service | Accepted |
+| [0023](0023-watching-transfers-in-flight.md) | Watching transfers in flight: stuck transfers, late requests, account conflicts | Accepted |

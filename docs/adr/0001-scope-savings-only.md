@@ -25,7 +25,7 @@ account, daily interest accrual and monthly payout. Deliberately left out:
 | **Multi-currency** | EUR-only product. `Money` hard-codes EUR and the wire format already carries a currency code, which is validated. | Currency on `Money` and per account. |
 | **Rate changes for existing accounts** | An account keeps the terms of the product version it was opened on (ADR 0017); new rates apply to new accounts. | Variable-rate products: a rate history per product that its accounts follow, and accrual picking the rate valid on each day. |
 | **Notice accounts, term deposits, tiered rates** | The products sold are instant access, differing in rate and payout frequency (ADR 0017). | New flows each: scheduled withdrawals, maturity, rate tiers in the accrual. |
-| **Closing accounts** | Not needed to demonstrate the flows. | Close with final interest payout, reject further instructions. |
+| **Closing accounts** | Not needed to demonstrate the flows. Accepted cost: an order whose funding fails leaves an empty account open for good, with its `AccountOpened` published and an entry in the transfer service's directory (ADR 0020); every mistyped current account id in an order adds one. | Close with final interest payout, reject further instructions; close the accounts of `FUNDING_FAILED` orders after a grace period. |
 
 ## Consequences
 

@@ -45,8 +45,9 @@ account and the same transfer request, which the transfer service applies once.
 
 ## Consequences
 
-- An account whose funding failed stays open with a zero balance. Closing such accounts after a
-  while is left for when closing accounts exists (ADR 0001).
+- An account whose funding failed stays open with a zero balance for good: its `AccountOpened` is
+  published and the transfer service keeps it in its directory. Nothing removes these accounts;
+  closing them after a grace period is left for when closing accounts exists (ADR 0001).
 - `POST /accounts` is gone: accounts are only opened by orders.
 - Order outcomes are read with `GET /orders/{id}`; order events for push notifications can be added
   when an app needs them.

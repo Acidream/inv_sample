@@ -11,7 +11,6 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
-import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -24,7 +23,6 @@ import org.springframework.web.bind.annotation.RestController;
  * log and answers {@code 202} (ADR 0019); the outcome is read with {@code GET} or from
  * {@code payments.transfer-events.v1}. The client chooses the transfer id, so a retry is safe.
  */
-@Validated
 @RestController
 @RequestMapping("/transfers")
 class TransferController {

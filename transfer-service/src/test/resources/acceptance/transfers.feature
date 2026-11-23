@@ -101,6 +101,42 @@ Feature: Transfers between a customer's current account and savings (ADR 0015, 0
     * def outcome = hooks.awaitTransferEvent(transferId)
     * match outcome == { reason: 'INVALID_REQUEST', detail: 'accounts not known in time', type: 'TRANSFER_FAILED' }
 
+  Scenario: a request delivered late still gets the full time for its accounts to become known
+    # Sent an hour ago, held up in a backlog: the timeout counts from when the transfer service got it.
+    * hooks.setClock('2026-03-02T10:00:00Z')
+    * def newSavings = hooks.uuid()
+    * hooks.requestTransferSentAt(transferId, customerId, currentAccount, newSavings, '10.00', '2026-03-02T09:00:00Z')
+    Given path 'transfers', transferId
+    And retry until responseStatus == 200
+    When method get
+    * hooks.setClock('2026-03-02T10:05:00Z')
+    * hooks.runAwaitingAccountsJob()
+    Given path 'transfers', transferId
+    When method get
+    Then match response.status == 'AWAITING_ACCOUNTS'
+
+    * hooks.savingsAccountOpenedWithId(customerId, newSavings)
+    * def debit = hooks.awaitCurrentAccountInstruction(currentAccount, 'DEBIT_CURRENT_ACCOUNT')
+    * match debit.transferId == transferId
+
+  Scenario: a transfer that waits too long for a ledger's answer is counted as stuck until the answer comes
+    * hooks.setClock('2026-04-01T10:00:00Z')
+    * hooks.requestTransfer(transferId, customerId, currentAccount, savingsAccount, '10.00')
+    * def debit = hooks.awaitCurrentAccountInstruction(currentAccount, 'DEBIT_CURRENT_ACCOUNT')
+    * def before = hooks.stuckTransfers()
+
+    * hooks.setClock('2026-04-01T10:16:00Z')
+    * match hooks.stuckTransfers() == before + 1
+
+    * hooks.currentAccountDebited(currentAccount, transferId, '10.00')
+    * def credit = hooks.awaitSavingsInstruction(savingsAccount, 'TRANSFER_FROM_CURRENT_ACCOUNT')
+    * match hooks.stuckTransfers() == before
+
+  Scenario: an account id announced again by another ledger is dead-lettered, not ignored
+    * hooks.savingsAccountOpenedWithId(customerId, currentAccount)
+    * def cause = hooks.awaitDeadLetter('savings.account-events.v1', currentAccount)
+    * match cause == 'com.example.transfers.application.AccountConflictException'
+
   Scenario: money can't move to another customer's account
     * def strangersSavings = hooks.savingsAccountOpened(hooks.uuid())
     * hooks.requestTransfer(transferId, customerId, currentAccount, strangersSavings, '10.00')
@@ -161,3 +197,8 @@ Feature: Transfers between a customer's current account and savings (ADR 0015, 0
     Given path 'transfers', 'tr-unknown'
     When method get
     Then status 404
+
+  Scenario: a malformed transfer id in the path is a client error
+    Given path 'transfers', 'tr!1'
+    When method get
+    Then status 400

@@ -1,7 +1,6 @@
 package com.example.platform.messaging;
 
 import io.micrometer.core.instrument.MeterRegistry;
-import java.time.Clock;
 import javax.sql.DataSource;
 import net.javacrumbs.shedlock.core.LockProvider;
 import net.javacrumbs.shedlock.provider.jdbctemplate.JdbcTemplateLockProvider;
@@ -17,9 +16,9 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * Everything a service gets by depending on this library (ADR 0022). The service provides a
- * {@link Clock} bean, the tables described in {@code package-info}, and its own error handler built
- * with {@link DeadLetters#errorHandler}.
+ * Everything a service gets by depending on this library (ADR 0022). The service provides the
+ * tables described in {@code package-info} and its own error handler built with
+ * {@link DeadLetters#errorHandler}.
  *
  * <p>Scheduling and ShedLock are switched on here: the relay and the retention job, and the
  * service's own jobs, run on one instance at a time; the lock lives in Postgres and uses DB time.
@@ -56,9 +55,9 @@ public class PlatformMessagingAutoConfiguration {
     }
 
     @Bean
-    RetentionJob retentionJob(JdbcClient jdbc, Clock clock, PlatformMessagingProperties properties) {
+    RetentionJob retentionJob(JdbcClient jdbc, PlatformMessagingProperties properties) {
         var retention = properties.retention();
-        return new RetentionJob(jdbc, clock, retention.publishedOutboxMessages(), retention.processedMessages());
+        return new RetentionJob(jdbc, retention.publishedOutboxMessages(), retention.processedMessages());
     }
 
     @Bean

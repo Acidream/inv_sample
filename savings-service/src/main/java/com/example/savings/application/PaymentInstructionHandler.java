@@ -32,8 +32,9 @@ import org.springframework.transaction.annotation.Transactional;
  * known outcome at once: no holds, no waiting for the outside world, and the balance never goes
  * negative.
  *
- * <p>De-duplication works on two levels: the message id catches redeliveries of the same message;
- * the transfer id catches the same transfer re-sent as a new message.
+ * <p>De-duplication works on two levels: the message id catches redeliveries of the same message
+ * (stored as {@code "instruction:" + id}, like every consumed id prefixed by its source); the
+ * transfer id catches the same transfer re-sent as a new message.
  */
 @Service
 public class PaymentInstructionHandler {
@@ -61,7 +62,7 @@ public class PaymentInstructionHandler {
 
     @Transactional
     public void handle(PaymentInstruction instruction) {
-        if (!processedEvents.markProcessed(instruction.eventId())) {
+        if (!processedEvents.markProcessed("instruction:" + instruction.eventId())) {
             log.info("Skipping already processed message {}", instruction.eventId());
             metrics.duplicateMessage();
             return;

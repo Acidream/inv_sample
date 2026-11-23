@@ -5,6 +5,7 @@ import com.example.transfers.domain.Money;
 import com.example.transfers.domain.Transfer;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -16,14 +17,23 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
-/** {@link Transfers} on the {@code transfer} table; updates are guarded by {@code version}. */
+/**
+ * {@link Transfers} on the {@code transfer} table; updates are guarded by {@code version}. Also keeps
+ * two times the domain doesn't need (ADR 0023): {@code received_at}, when the request was applied,
+ * and {@code status_changed_at}, when the status last changed. Both come from the service's
+ * {@link Clock}, like the times they are compared with.
+ */
 @Component
 class JdbcTransfers implements Transfers {
 
-    private final JdbcClient jdbc;
+    private static final String IN_FLIGHT = "('DEBITING', 'CREDITING', 'RETURNING')";
 
-    JdbcTransfers(JdbcClient jdbc) {
+    private final JdbcClient jdbc;
+    private final Clock clock;
+
+    JdbcTransfers(JdbcClient jdbc, Clock clock) {
         this.jdbc = jdbc;
+        this.clock = clock;
     }
 
     @Override
@@ -33,9 +43,9 @@ class JdbcTransfers implements Transfers {
         var request = state.request();
         jdbc.sql("""
                 insert into transfer (transfer_id, customer_id, from_account_id, to_account_id, amount, requested_at,
-                    status, route, failure_reason, failure_detail, version)
+                    status, route, failure_reason, failure_detail, version, received_at, status_changed_at)
                 values (:transferId, :customerId, :from, :to, :amount, :requestedAt, :status, :route, :reason,
-                    :detail, 0)
+                    :detail, 0, :now, :now)
                 """)
                 .param("transferId", request.transferId())
                 .param("customerId", request.customerId())
@@ -47,6 +57,7 @@ class JdbcTransfers implements Transfers {
                 .param("route", name(state.route()))
                 .param("reason", name(state.failureReason()))
                 .param("detail", state.failureDetail())
+                .param("now", clock.instant().atOffset(ZoneOffset.UTC))
                 .update();
     }
 
@@ -62,7 +73,8 @@ class JdbcTransfers implements Transfers {
         var state = transfer.state();
         int updated = jdbc.sql("""
                 update transfer set status = :status, route = :route, failure_reason = :reason,
-                    failure_detail = :detail, version = version + 1
+                    failure_detail = :detail, version = version + 1,
+                    status_changed_at = case when status = :status then status_changed_at else :now end
                 where transfer_id = :transferId and version = :version""")
                 .param("status", state.status().name())
                 .param("route", name(state.route()))
@@ -70,6 +82,7 @@ class JdbcTransfers implements Transfers {
                 .param("detail", state.failureDetail())
                 .param("transferId", state.request().transferId())
                 .param("version", state.version())
+                .param("now", clock.instant().atOffset(ZoneOffset.UTC))
                 .update();
         if (updated != 1) {
             throw new OptimisticLockingFailureException("Transfer " + state.request().transferId()
@@ -89,16 +102,24 @@ class JdbcTransfers implements Transfers {
     }
 
     @Override
-    public List<Transfer> awaitingSince(Instant requestedBefore, int limit) {
+    public List<Transfer> awaitingSince(Instant receivedBefore, int limit) {
         return jdbc.sql("""
                 select * from transfer
-                where status = 'AWAITING_ACCOUNTS' and requested_at < :before
-                order by requested_at, transfer_id
+                where status = 'AWAITING_ACCOUNTS' and received_at < :before
+                order by received_at, transfer_id
                 limit :limit
                 for update skip locked""")
-                .param("before", requestedBefore.atOffset(ZoneOffset.UTC))
+                .param("before", receivedBefore.atOffset(ZoneOffset.UTC))
                 .param("limit", limit)
                 .query(JdbcTransfers::map).list();
+    }
+
+    @Override
+    public long countInFlightSince(Instant changedBefore) {
+        return jdbc.sql("select count(*) from transfer where status in " + IN_FLIGHT
+                        + " and status_changed_at < :before")
+                .param("before", changedBefore.atOffset(ZoneOffset.UTC))
+                .query(Long.class).single();
     }
 
     private static String name(Enum<?> value) {

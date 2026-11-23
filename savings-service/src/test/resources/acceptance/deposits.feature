@@ -98,3 +98,14 @@ Feature: Deposits arrive from the customer's current account via Kafka
     And param cursor = 'not-a-cursor'
     When method get
     Then status 400
+
+  Scenario Outline: a page size out of range is a client error: <limit>
+    Given path 'accounts', accountId, 'transactions'
+    And param limit = <limit>
+    When method get
+    Then status 400
+
+    Examples:
+      | limit |
+      | 0     |
+      | 101   |

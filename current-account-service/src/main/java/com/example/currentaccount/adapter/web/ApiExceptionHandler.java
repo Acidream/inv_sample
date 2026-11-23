@@ -5,14 +5,16 @@ import com.example.currentaccount.application.PaymentIdInUseException;
 import com.example.currentaccount.application.UnknownAccountException;
 import com.example.currentaccount.application.UnknownPaymentException;
 import com.example.currentaccount.application.port.CommandLog.CommandLogUnavailableException;
-import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
-/** Errors as RFC 9457 problem details. The base class covers validation and binding errors. */
+/**
+ * Errors as RFC 9457 problem details. The base class covers validation and binding errors, including
+ * Spring MVC's built-in method validation of path variables and parameters (no {@code @Validated}).
+ */
 @RestControllerAdvice
 class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 
@@ -30,11 +32,6 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler({AccountIdInUseException.class, PaymentIdInUseException.class})
     ProblemDetail idInUse(RuntimeException e) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_CONTENT, e.getMessage());
-    }
-
-    @ExceptionHandler(ConstraintViolationException.class)
-    ProblemDetail invalidPath(ConstraintViolationException e) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, e.getMessage());
     }
 
     /** Nothing was accepted; the client retries with the same id. */

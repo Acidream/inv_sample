@@ -11,7 +11,10 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
-/** Errors as RFC 9457 problem details. The base class covers validation and binding errors. */
+/**
+ * Errors as RFC 9457 problem details. The base class covers validation and binding errors, including
+ * Spring MVC's built-in method validation of path variables and parameters (no {@code @Validated}).
+ */
 @RestControllerAdvice
 class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 

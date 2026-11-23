@@ -14,7 +14,7 @@ import com.example.platform.messaging.WireValues;
  */
 final class SavingsCommandTranslator {
 
-    /** Stored as {@code "command:" + id} in {@code processed_message.message_id varchar(100)}. */
+    /** Stored as {@code "command:" + id} in {@code processed_message.message_id varchar(200)}. */
     static final int MAX_COMMAND_ID_LENGTH = 90;
     static final int MAX_PRODUCT_CODE_LENGTH = 40;
 

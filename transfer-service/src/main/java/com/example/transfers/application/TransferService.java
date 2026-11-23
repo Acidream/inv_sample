@@ -94,6 +94,15 @@ public class TransferService {
             return;
         }
         directory.lock(account.accountId());
+        var known = directory.find(account.accountId());
+        if (known.isPresent()) {
+            if (!known.get().equals(account)) {
+                // Two ledgers, or two customers, claim one account id: routing and the ownership check
+                // can't both be right. A person decides (the exception dead-letters the event).
+                throw new AccountConflictException(known.get(), account);
+            }
+            return;
+        }
         directory.add(account);
         for (var transfer : transfers.awaiting(account.accountId())) {
             var request = transfer.request();
@@ -131,14 +140,24 @@ public class TransferService {
 
     /** Fails requests whose accounts didn't become known in time. @return how many */
     @Transactional
-    public int failAwaitingSince(Instant requestedBefore, int limit) {
-        var stale = transfers.awaitingSince(requestedBefore, limit);
+    public int failAwaitingSince(Instant receivedBefore, int limit) {
+        var stale = transfers.awaitingSince(receivedBefore, limit);
         for (var transfer : stale) {
             var step = transfer.timedOut();
             transfers.update(transfer);
             execute(step);
         }
         return stale.size();
+    }
+
+    /**
+     * Transfers waiting for a ledger's answer since before the given time (ADR 0023). Not re-sent:
+     * both ledgers answer a transfer id once, so a re-sent instruction would get no answer. A stuck
+     * transfer means a dead letter or a bug, for a person to look at.
+     */
+    @Transactional(readOnly = true)
+    public long countStuck(Instant changedBefore) {
+        return transfers.countInFlightSince(changedBefore);
     }
 
     @Transactional(readOnly = true)

@@ -18,7 +18,7 @@ public interface AccountDirectory {
      */
     void lock(UUID... accountIds);
 
-    /** Remembers an account; knowing it already changes nothing. */
+    /** Remembers a new account. The caller checks first whether the id is known (ADR 0023). */
     void add(KnownAccount account);
 
     Optional<KnownAccount> find(UUID accountId);

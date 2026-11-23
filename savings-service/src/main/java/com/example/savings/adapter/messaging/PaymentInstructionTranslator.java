@@ -20,7 +20,10 @@ import com.example.savings.domain.Money;
  */
 final class PaymentInstructionTranslator {
 
-    /** {@code processed_message.message_id} and {@code transfer.transfer_id} are {@code varchar(100)}. */
+    /**
+     * {@code transfer.transfer_id} is {@code varchar(100)}; event ids are stored as
+     * {@code "instruction:" + id} in {@code processed_message.message_id varchar(200)}.
+     */
     static final int MAX_ID_LENGTH = 100;
 
     private PaymentInstructionTranslator() {

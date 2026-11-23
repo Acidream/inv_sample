@@ -64,7 +64,7 @@ class PaymentInstructionHandlerTest {
 
     @Test
     void duplicateMessageChangesNothing() {
-        when(processedEvents.markProcessed("e1")).thenReturn(false);
+        when(processedEvents.markProcessed("instruction:e1")).thenReturn(false);
 
         handler.handle(new TransferIn("e1", account.id(), "t1", Money.of("10.00")));
 
@@ -74,7 +74,7 @@ class PaymentInstructionHandlerTest {
 
     @Test
     void insufficientFundsIsABusinessOutcomeNotAnError() {
-        when(processedEvents.markProcessed("e1")).thenReturn(true);
+        when(processedEvents.markProcessed("instruction:e1")).thenReturn(true);
         when(accounts.get(account.id())).thenReturn(account);
         when(transfers.find("t1")).thenReturn(Optional.empty());
 
@@ -88,7 +88,7 @@ class PaymentInstructionHandlerTest {
 
     @Test
     void transferResentUnderNewMessageIdIsAppliedOnce() {
-        when(processedEvents.markProcessed("e2")).thenReturn(true);
+        when(processedEvents.markProcessed("instruction:e2")).thenReturn(true);
         when(accounts.get(account.id())).thenReturn(account);
         when(transfers.find("t1")).thenReturn(Optional.of(Transfer.deposited("t1", account.id(), Money.of("10.00"),
                 NOW)));
@@ -102,7 +102,7 @@ class PaymentInstructionHandlerTest {
 
     @Test
     void transferIdReusedForADifferentMovementIsAContractViolation() {
-        when(processedEvents.markProcessed("e2")).thenReturn(true);
+        when(processedEvents.markProcessed("instruction:e2")).thenReturn(true);
         when(accounts.get(account.id())).thenReturn(account);
         when(transfers.find("t1")).thenReturn(Optional.of(Transfer.deposited("t1", account.id(), Money.of("10.00"),
                 NOW)));
@@ -118,8 +118,8 @@ class PaymentInstructionHandlerTest {
         account.deposit(Money.of("100.00"), "t0", NOW);
         account.withdraw(Money.of("40.00"), "t1", NOW);
         var transfer = Transfer.withdrawn("t1", account.id(), Money.of("40.00"), NOW);
-        when(processedEvents.markProcessed("e3")).thenReturn(true);
-        when(processedEvents.markProcessed("e4")).thenReturn(true);
+        when(processedEvents.markProcessed("instruction:e3")).thenReturn(true);
+        when(processedEvents.markProcessed("instruction:e4")).thenReturn(true);
         when(transfers.find("t1")).thenReturn(Optional.of(transfer));
         when(accounts.get(account.id())).thenReturn(account);
 
@@ -136,7 +136,7 @@ class PaymentInstructionHandlerTest {
 
     @Test
     void returningARejectedWithdrawalIsAContractViolation() {
-        when(processedEvents.markProcessed("e3")).thenReturn(true);
+        when(processedEvents.markProcessed("instruction:e3")).thenReturn(true);
         when(transfers.find("t1")).thenReturn(Optional.of(Transfer.rejected("t1", account.id(), Money.of("40.00"),
                 NOW)));
 
@@ -147,7 +147,7 @@ class PaymentInstructionHandlerTest {
 
     @Test
     void returnForAnotherAccountIsRejected() {
-        when(processedEvents.markProcessed("e3")).thenReturn(true);
+        when(processedEvents.markProcessed("instruction:e3")).thenReturn(true);
         when(transfers.find("t1")).thenReturn(Optional.of(Transfer.withdrawn("t1", UUID.randomUUID(),
                 Money.of("40.00"), NOW)));
 

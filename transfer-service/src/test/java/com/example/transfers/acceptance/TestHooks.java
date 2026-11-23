@@ -31,6 +31,7 @@ import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.Message;
 import com.google.protobuf.Timestamp;
 import com.google.protobuf.util.JsonFormat;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
@@ -71,13 +72,31 @@ public final class TestHooks {
         context.getBean(AwaitingAccountsJob.class).run();
     }
 
+    /** The {@code transfers.stuck} gauge, as Prometheus would read it now. */
+    public static long stuckTransfers() {
+        return (long) context.getBean(MeterRegistry.class).get("transfers.stuck").gauge().value();
+    }
+
     // --- requesters -------------------------------------------------------------------------------
 
     /** A request straight on the command log, as savings sends one when an order opens an account. */
     public static void requestTransfer(String transferId, String customerId, String from, String to, String amount) {
+        requestTransfer(transferId, customerId, from, to, amount, now());
+    }
+
+    /** A request that was sent at {@code isoInstant} and is only delivered now, e.g. after a backlog. */
+    public static void requestTransferSentAt(String transferId, String customerId, String from, String to,
+            String amount, String isoInstant) {
+        var sent = Instant.parse(isoInstant);
+        requestTransfer(transferId, customerId, from, to, amount,
+                Timestamp.newBuilder().setSeconds(sent.getEpochSecond()).setNanos(sent.getNano()).build());
+    }
+
+    private static void requestTransfer(String transferId, String customerId, String from, String to, String amount,
+            Timestamp occurredAt) {
         var request = TransferRequest.newBuilder()
                 .setRequestId(uuid())
-                .setOccurredAt(now())
+                .setOccurredAt(occurredAt)
                 .setTransferId(transferId)
                 .setCustomerId(customerId)
                 .setFromAccountId(from)

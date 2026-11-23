@@ -15,6 +15,8 @@ import com.example.transfers.domain.KnownAccount;
 import com.example.transfers.domain.KnownAccount.Ledger;
 import com.google.protobuf.InvalidProtocolBufferException;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
@@ -22,9 +24,15 @@ import org.springframework.stereotype.Component;
  * Everything the transfer service consumes: its own request log, and the events of the two ledgers.
  * Ledger events become account directory entries and saga outcomes; the rest is ignored. Offsets are
  * committed after the transaction, so a crash causes a redelivery, recognised by message id.
+ *
+ * <p>An event without a payload this service knows is skipped, not dead-lettered: a ledger adding an
+ * event type is an additive contract change (ADR 0005), and this service, compiled against the older
+ * contract, sees the new case as an unset payload.
  */
 @Component
 class TransferListeners {
+
+    private static final Logger log = LoggerFactory.getLogger(TransferListeners.class);
 
     private final TransferService transfers;
 
@@ -51,9 +59,8 @@ class TransferListeners {
             case WITHDRAWAL_REJECTED -> savings(id, event.getWithdrawalRejected().getTransferId(), Kind.DEBIT_REJECTED,
                     event.getWithdrawalRejected().getReason().name());
             case WITHDRAWAL_RETURNED -> savings(id, event.getWithdrawalReturned().getTransferId(), Kind.RETURNED, "");
-            default -> {
-                // interest and anything added later: not a transfer's business
-            }
+            default -> log.debug("Ignoring savings event {} ({}): not a transfer's business", id,
+                    event.getPayloadCase());
         }
     }
 
@@ -73,7 +80,8 @@ class TransferListeners {
                     Kind.CREDITED, "");
             case CREDIT_REJECTED -> currentAccount(id, event.getCreditRejected().getTransferId(), Kind.CREDIT_REFUSED,
                     event.getCreditRejected().getReason());
-            default -> throw new IllegalArgumentException("Current account event " + id + " has no payload");
+            default -> log.debug("Ignoring current account event {} ({}): not a transfer's business", id,
+                    event.getPayloadCase());
         }
     }
 

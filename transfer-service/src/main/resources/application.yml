@@ -49,5 +49,7 @@ transfers:
     partitions: 3
   # A request whose accounts are still unknown after this long fails as INVALID_REQUEST.
   awaiting-accounts-timeout: 10m
+  # A transfer waiting this long for a ledger's answer counts as stuck (gauge transfers.stuck).
+  stuck-after: 15m
   jobs:
     awaiting-accounts-cron: "0 * * * * *"
