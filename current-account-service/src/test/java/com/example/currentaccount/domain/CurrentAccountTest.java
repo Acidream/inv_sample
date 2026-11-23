@@ -21,7 +21,7 @@ class CurrentAccountTest {
     }
 
     @Test
-    void opensWithAZeroBalance() {
+    void open_NewAccount_HasZeroBalance() {
         var account = account("200", "0");
         assertThat(account.balance()).isEqualByComparingTo("0");
         assertThat(account.available()).isEqualByComparingTo("200");
@@ -29,7 +29,7 @@ class CurrentAccountTest {
     }
 
     @Test
-    void debitsDownToMinusTheOverdraftLimit() {
+    void debit_AmountReachingOverdraftLimit_IsCarriedOut() {
         var account = account("200", "100");
         var decision = account.debit("t1", Money.of("300"), NOW);
         assertThat(decision.answer().carriedOut()).isTrue();
@@ -42,7 +42,7 @@ class CurrentAccountTest {
     }
 
     @Test
-    void rejectsADebitOneCentBeyondTheLimit() {
+    void debit_OneCentBeyondOverdraftLimit_IsRejected() {
         var account = account("200", "100");
         var decision = account.debit("t1", Money.of("300.01"), NOW);
         assertThat(decision.answer().rejection()).hasValue(CurrentAccount.OVERDRAFT_EXCEEDED);
@@ -51,7 +51,7 @@ class CurrentAccountTest {
     }
 
     @Test
-    void creditsAddToTheBalance() {
+    void credit_OpenAccount_AddsToBalance() {
         var account = account("0", "0");
         var decision = account.credit("t1", Money.of("40"), NOW);
         assertThat(decision.answer().carriedOut()).isTrue();
@@ -59,7 +59,7 @@ class CurrentAccountTest {
     }
 
     @Test
-    void aBlockedAccountRefusesTransfersButBooksIncomingPayments() {
+    void block_TransfersAndIncomingPayment_RefusesTransfersButBooksPayment() {
         var account = account("100", "50");
         account.block("suspected fraud");
         assertThat(account.debit("t1", Money.of("1"), NOW).answer().rejection())
@@ -77,12 +77,12 @@ class CurrentAccountTest {
     }
 
     @Test
-    void aBlockNeedsAReason() {
+    void block_BlankReason_Throws() {
         assertThatThrownBy(() -> account("0", "0").block(" ")).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
-    void anOverdraftLimitIsZeroOrPositiveInCents() {
+    void overdraftLimit_NegativeOrSubCent_Throws() {
         assertThat(CurrentAccount.overdraftLimit(new BigDecimal("5"))).isEqualByComparingTo("5.00");
         assertThatThrownBy(() -> CurrentAccount.overdraftLimit(new BigDecimal("-0.01")))
                 .isInstanceOf(IllegalArgumentException.class);
@@ -91,7 +91,7 @@ class CurrentAccountTest {
     }
 
     @Test
-    void recognisesTheSameOpening() {
+    void openedAs_SameOrDifferentDetails_RecognisesSameOpening() {
         var account = account("200", "0");
         assertThat(account.openedAs(account.customerId(), new BigDecimal("200.00"))).isTrue();
         assertThat(account.openedAs(account.customerId(), new BigDecimal("100"))).isFalse();
@@ -99,7 +99,7 @@ class CurrentAccountTest {
     }
 
     @Test
-    void anAnswerRecognisesTheSameInstruction() {
+    void answers_SameOrDifferentInstruction_RecognisesSameInstruction() {
         var answer = account("0", "100").debit("t1", Money.of("30"), NOW).answer();
         assertThat(answer.answers(TransferAnswer.Direction.DEBIT, Money.of("30.00"))).isTrue();
         assertThat(answer.answers(TransferAnswer.Direction.DEBIT, Money.of("31"))).isFalse();

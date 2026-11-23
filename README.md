@@ -180,6 +180,9 @@ Checkstyle · GitHub Actions
 ./gradlew build          # Checkstyle, unit, architecture and acceptance tests of all three services (needs Docker)
 ```
 
+Test methods are named `methodUnderTest_Given_Expected`, e.g. `debit_OneCentBeyondOverdraftLimit_IsRejected`;
+Checkstyle (`TestMethodName`) refuses any other name for a `@Test`, `@ParameterizedTest` or `@Karate.Test` method.
+
 ## Repository layout
 
 ```

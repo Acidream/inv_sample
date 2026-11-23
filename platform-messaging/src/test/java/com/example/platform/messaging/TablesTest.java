@@ -52,7 +52,7 @@ class TablesTest {
     }
 
     @Test
-    void aMessageIdIsProcessedOnce() {
+    void markProcessed_SameIdTwice_ReturnsFalseTheSecondTime() {
         var processed = new ProcessedMessages(jdbc);
         assertThat(processed.markProcessed("command:1")).isTrue();
         assertThat(processed.markProcessed("command:1")).isFalse();
@@ -60,7 +60,7 @@ class TablesTest {
     }
 
     @Test
-    void theOutboxStoresTheMessageUnpublished() {
+    void add_InTransaction_StoresMessageUnpublished() {
         new Outbox(jdbc).add("topic.v1", "key-1", "OPENED", new byte[] {1, 2, 3});
         var row = jdbc.sql("select message_key, topic, event_type, payload, published_at from outbox_event")
                 .query((rs, n) -> new Object[] {rs.getString(1), rs.getString(2), rs.getString(3), rs.getBytes(4),
@@ -70,7 +70,7 @@ class TablesTest {
     }
 
     @Test
-    void retentionMeasuresAgeOnTheDatabaseClock() {
+    void run_AgesOnDatabaseClock_IgnoresServiceClock() {
         // Rows written by the database a moment ago are fresh, whatever a service's Clock says.
         new Outbox(jdbc).add("topic.v1", "key-1", "OPENED", new byte[] {1});
         jdbc.sql("update outbox_event set published_at = now()").update();
@@ -83,7 +83,7 @@ class TablesTest {
     }
 
     @Test
-    void retentionDeletesOnlyWhatIsOldEnough() {
+    void run_MixedAges_DeletesOnlyRowsOlderThanRetention() {
         insertOutbox(now().minus(Duration.ofDays(8)));          // published long ago: deleted
         insertOutbox(now().minus(Duration.ofDays(6)));          // published recently: kept
         insertOutbox(null);                                   // never published: kept, however old
@@ -100,7 +100,7 @@ class TablesTest {
     }
 
     @Test
-    void retentionDeletesInBatchesUntilNothingIsLeft() {
+    void run_MoreRowsThanOneBatch_DeletesInBatchesUntilNoneLeft() {
         jdbc.sql("""
                 insert into processed_message (message_id, processed_at)
                 select 'id-' || n, :at from generate_series(1, :count) n""")

@@ -17,7 +17,7 @@ class AcceptanceTest {
     ApplicationContext context;
 
     @Karate.Test
-    Karate features() {
+    Karate run_AcceptanceFeatures_AllScenariosPass() {
         TestHooks.init(context);
         var port = context.getEnvironment().getRequiredProperty("local.server.port");
         // Filesystem path rather than classpath: Karate 2.1 cannot resolve classpath: features on Windows.

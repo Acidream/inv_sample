@@ -20,7 +20,7 @@ class PaymentInstructionTranslatorTest {
     private static final String ACCOUNT_ID = UUID.randomUUID().toString();
 
     @Test
-    void translatesAValidDeposit() {
+    void translate_ValidDeposit_ReturnsTransferIn() {
         var translated = PaymentInstructionTranslator.translate(deposit("e-1", "tr-1", "99999999999999999.99"));
 
         assertThat(translated).isEqualTo(new TransferIn("e-1", UUID.fromString(ACCOUNT_ID), "tr-1",
@@ -28,14 +28,14 @@ class PaymentInstructionTranslatorTest {
     }
 
     @Test
-    void acceptsIdsOfExactlyTheColumnLength() {
+    void translate_IdsOfColumnLength_AreAccepted() {
         var id = "x".repeat(PaymentInstructionTranslator.MAX_ID_LENGTH);
 
         assertThat(PaymentInstructionTranslator.translate(deposit(id, id, "1.00")).eventId()).isEqualTo(id);
     }
 
     @Test
-    void rejectsAnEventIdLongerThanTheColumn() {
+    void translate_EventIdLongerThanColumn_ThrowsInvalidMessage() {
         var tooLong = "x".repeat(PaymentInstructionTranslator.MAX_ID_LENGTH + 1);
 
         assertThatExceptionOfType(InvalidMessageException.class)
@@ -44,7 +44,7 @@ class PaymentInstructionTranslatorTest {
     }
 
     @Test
-    void rejectsATransferIdLongerThanTheColumn() {
+    void translate_TransferIdLongerThanColumn_ThrowsInvalidMessage() {
         var tooLong = "x".repeat(PaymentInstructionTranslator.MAX_ID_LENGTH + 1);
 
         assertThatExceptionOfType(InvalidMessageException.class)
@@ -57,7 +57,7 @@ class PaymentInstructionTranslatorTest {
     }
 
     @Test
-    void rejectsANulCharacterInAnId() {
+    void translate_NulCharacterInId_ThrowsInvalidMessage() {
         assertThatExceptionOfType(InvalidMessageException.class)
                 .isThrownBy(() -> PaymentInstructionTranslator.translate(deposit("e-1", "tr\u00001", "1.00")))
                 .withMessageContaining("NUL");
@@ -74,7 +74,7 @@ class PaymentInstructionTranslatorTest {
         "100000000000000000.00",     // 18 integer digits: does not fit numeric(19, 2)
         "0.00"                       // not positive
     })
-    void rejectsAmountsThatAreNotPlainPositiveCentAmountsThatFit(String amount) {
+    void translate_AmountNotPlainPositiveOrTooLarge_ThrowsInvalidMessage(String amount) {
         assertThatExceptionOfType(InvalidMessageException.class)
                 .isThrownBy(() -> PaymentInstructionTranslator.translate(deposit("e-1", "tr-1", amount)));
     }

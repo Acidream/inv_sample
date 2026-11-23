@@ -17,7 +17,7 @@ class ArchitectureTest {
             .importPackages("com.example.savings");
 
     @Test
-    void layersOnlyDependInwards() {
+    void layers_ProductionClasses_OnlyDependInwards() {
         layeredArchitecture().consideringOnlyDependenciesInLayers()
                 .layer("Domain").definedBy("..savings.domain..")
                 .layer("Application").definedBy("..savings.application..")
@@ -31,7 +31,7 @@ class ArchitectureTest {
 
     /** ADR 0016: no JPA annotations, no framework. Checkstyle's import control checks the same on source. */
     @Test
-    void domainIsPlainJava() {
+    void domain_ProductionClasses_IsPlainJava() {
         noClasses().that().resideInAPackage("..savings.domain..")
                 .should().dependOnClassesThat().resideOutsideOfPackages("java..", "..savings.domain..")
                 .check(CLASSES);
@@ -42,7 +42,7 @@ class ArchitectureTest {
      * can move to their own service without touching accounts.
      */
     @Test
-    void accountsDoNotDependOnOrders() {
+    void accounts_ProductionClasses_DoNotDependOnOrders() {
         noClasses().that().resideInAnyPackage("..savings.domain", "..savings.application")
                 .should().dependOnClassesThat().resideInAnyPackage("..savings.domain.order..",
                         "..savings.application.order..")
@@ -50,7 +50,7 @@ class ArchitectureTest {
     }
 
     @Test
-    void entitiesLiveInThePersistenceAdapterAndAreNotPublic() {
+    void jpaEntities_ProductionClasses_LiveInPersistenceAdapterAndAreNotPublic() {
         // By name: tests obey the import rules too, and only adapter.persistence may import JPA.
         classes().that().areAnnotatedWith("jakarta.persistence.Entity")
                 .should().resideInAPackage("..savings.adapter.persistence..")
@@ -60,7 +60,7 @@ class ArchitectureTest {
 
     /** Entities, Spring Data repositories and JPA itself don't leak: the rest only sees ports and domain objects. */
     @Test
-    void persistenceDoesNotLeakOutOfItsAdapter() {
+    void persistence_ProductionClasses_DoesNotLeakOutOfItsAdapter() {
         noClasses().that().resideOutsideOfPackage("..savings.adapter.persistence..")
                 .should().dependOnClassesThat().resideInAnyPackage(
                         "..savings.adapter.persistence..", "jakarta.persistence..", "org.hibernate..",
@@ -69,7 +69,7 @@ class ArchitectureTest {
     }
 
     @Test
-    void useCasesDoNotKnowAboutWireFormatsOrInfrastructure() {
+    void useCases_ProductionClasses_DoNotKnowWireFormatsOrInfrastructure() {
         noClasses().that().resideInAPackage("..savings.application..")
                 .should().dependOnClassesThat().resideInAnyPackage(
                         "com.example.events..", "com.example.platform..",

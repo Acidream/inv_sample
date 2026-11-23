@@ -17,7 +17,7 @@ class InterestTest {
         "-50.00,  0.0250, 0.0000000000",   // cannot happen (ADR 0015); would earn nothing, no debit interest
         "5000.00, 0.0000, 0.0000000000"
     })
-    void dailyInterestIsAct365WithTenFractionDigits(String balance, String rate, String expected) {
+    void forOneDay_BalanceAndRate_IsAct365WithTenFractionDigits(String balance, String rate, String expected) {
         assertThat(Interest.forOneDay(Money.of(balance), new BigDecimal(rate))).isEqualTo(new BigDecimal(expected));
     }
 }

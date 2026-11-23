@@ -29,6 +29,22 @@
         </module>
         <module name="TypeName"/>
         <module name="MethodName"/>
+        <!--
+          Test methods are named methodUnderTest_Given_Expected, e.g. debit_OneCentBeyondOverdraftLimit_IsRejected:
+          the method under test in camelCase, then the situation and the expected outcome in PascalCase.
+          A test method is one annotated @Test, @ParameterizedTest, @RepeatedTest, @TestFactory,
+          @TestTemplate or Karate's @Karate.Test. MethodName doesn't apply to them (it forbids underscores).
+        -->
+        <module name="MatchXpath">
+            <property name="id" value="TestMethodName"/>
+            <property name="query" value="//METHOD_DEF[MODIFIERS/ANNOTATION[IDENT[@text='Test' or @text='ParameterizedTest' or @text='RepeatedTest' or @text='TestFactory' or @text='TestTemplate'] or DOT/IDENT[@text='Test']]]/IDENT[not(matches(@text, '^[a-z][a-zA-Z0-9]*_[A-Z][a-zA-Z0-9]*_[A-Z][a-zA-Z0-9]*$'))]"/>
+            <message key="matchxpath.match"
+                     value="Test method names follow methodUnderTest_Given_Expected, e.g. debit_OneCentBeyondOverdraftLimit_IsRejected"/>
+        </module>
+        <module name="SuppressionXpathSingleFilter">
+            <property name="checks" value="MethodName"/>
+            <property name="query" value="//METHOD_DEF[MODIFIERS/ANNOTATION[IDENT[@text='Test' or @text='ParameterizedTest' or @text='RepeatedTest' or @text='TestFactory' or @text='TestTemplate'] or DOT/IDENT[@text='Test']]]/IDENT"/>
+        </module>
         <module name="ConstantName">
             <property name="format" value="^log$|^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$"/>
         </module>

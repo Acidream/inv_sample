@@ -23,7 +23,7 @@ class TransferEventListenerTest {
     private final TransferEventListener listener = new TransferEventListener(orders);
 
     @Test
-    void aTransferEventOfANewerTypeIsSkipped() throws Exception {
+    void onMessage_EventOfNewerType_IsSkipped() throws Exception {
         var event = TransferEvent.newBuilder()
                 .setEventId(UUID.randomUUID().toString())
                 .setTransferId("savings-order-" + UUID.randomUUID())

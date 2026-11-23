@@ -22,7 +22,7 @@ class OrderTest {
             Money.of("250.00"), UUID.randomUUID(), Instant.parse("2026-03-01T10:00:00Z"));
 
     @Test
-    void anOrderForTheCurrentVersionOpensAnAccountAndAsksForTheMoney() {
+    void place_CurrentVersion_StartsFundingWithDerivedAccountAndTransfer() {
         var order = Order.place(request, Optional.of(V2));
 
         assertThat(order.status()).isEqualTo(Order.Status.FUNDING);
@@ -31,14 +31,14 @@ class OrderTest {
     }
 
     @Test
-    void theSameOrderAlwaysGetsTheSameAccountAndTransfer() {
+    void place_SameOrderTwice_GetsSameAccountAndTransfer() {
         assertThat(Order.accountIdFor(request.orderId())).isEqualTo(Order.accountIdFor(request.orderId()));
         assertThat(Order.place(request, Optional.of(V2)).state().accountId())
                 .isEqualTo(Order.place(request, Optional.of(V2)).state().accountId());
     }
 
     @Test
-    void anOrderForAProductNotOnSaleIsRejected() {
+    void place_ProductNotOnSale_IsRejected() {
         var order = Order.place(request, Optional.empty());
 
         assertThat(order.status()).isEqualTo(Order.Status.REJECTED);
@@ -47,7 +47,7 @@ class OrderTest {
     }
 
     @Test
-    void termsThatHaveBeenReplacedAreNotSoldAnyMore() {
+    void place_ReplacedVersion_IsRejected() {
         var v3 = new SavingsProduct("INSTANT_ACCESS", 3, "Instant access", new BigDecimal("0.02"),
                 PayoutFrequency.MONTHLY);
 
@@ -62,7 +62,7 @@ class OrderTest {
     }
 
     @Test
-    void theFundingTransferDecidesTheOutcome() {
+    void funded_MatchingDepositOrFailure_DecidesOutcome() {
         var funded = Order.place(request, Optional.of(V2));
         funded.funded(deposit(funded, request.amount()));
         funded.funded(deposit(funded, request.amount()));
@@ -75,7 +75,7 @@ class OrderTest {
     }
 
     @Test
-    void aCompletedTransferFundsTheOrderOnlyIfSavingsBookedTheOrdersAmountToItsAccount() {
+    void funded_NoMatchingDeposit_ThrowsIllegalOrderTransition() {
         var order = Order.place(request, Optional.of(V2));
         var toAnotherAccount = Optional.of(Transfer.deposited(order.transferId().orElseThrow(), UUID.randomUUID(),
                 request.amount(), Instant.parse("2026-03-01T10:00:05Z")));
@@ -88,7 +88,7 @@ class OrderTest {
     }
 
     @Test
-    void aFailedTransferUnderWhichSavingsBookedMoneyIsAContractViolation() {
+    void fundingFailed_DepositBooked_ThrowsIllegalOrderTransition() {
         var order = Order.place(request, Optional.of(V2));
 
         assertThatThrownBy(() -> order.fundingFailed("DEBIT_REJECTED", deposit(order, request.amount())))
@@ -97,7 +97,7 @@ class OrderTest {
     }
 
     @Test
-    void contradictingOutcomesAreAContractViolation() {
+    void funded_AfterFailureOrRejection_ThrowsIllegalOrderTransition() {
         var order = Order.place(request, Optional.of(V2));
         order.fundingFailed("DEBIT_REJECTED", Optional.empty());
 
@@ -108,7 +108,7 @@ class OrderTest {
     }
 
     @Test
-    void aRetryIsTheSameOrderWhateverTimeItWasSent() {
+    void sameOrderAs_RetryAtAnotherTime_IsSameOrder() {
         var retry = new Order.Request(request.orderId(), request.customerId(), request.productCode(),
                 request.productVersion(), request.amount(), request.fromAccountId(), request.placedAt().plusSeconds(5));
         var different = new Order.Request(request.orderId(), request.customerId(), request.productCode(),

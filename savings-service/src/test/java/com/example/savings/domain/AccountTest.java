@@ -24,7 +24,7 @@ class AccountTest {
     private final Account account = Account.open(UUID.randomUUID(), UUID.randomUUID(), PRODUCT, NOW, BERLIN);
 
     @Test
-    void depositProducesLedgerEntryWithRunningBalance() {
+    void deposit_PositiveAmount_ProducesEntryWithRunningBalance() {
         account.deposit(Money.of("10.00"), "p1", NOW);
         var entry = account.deposit(Money.of("5.50"), "p2", NOW);
 
@@ -35,7 +35,7 @@ class AccountTest {
     }
 
     @Test
-    void aStoredAccountIsRebuiltWithTheSameState() {
+    void restore_StoredState_RebuildsSameState() {
         account.deposit(Money.of("10.00"), "p1", NOW);
         account.accrueDay(account.nextAccrualDate(), Money.of("10.00"));
         var stored = new Account.State(account.id(), account.customerId(), account.product(), account.balance(),
@@ -48,7 +48,7 @@ class AccountTest {
     }
 
     @Test
-    void aStoredAccountMustNotBeOverdrawn() {
+    void restore_NegativeBalance_Throws() {
         var overdrawn = new Account.State(account.id(), account.customerId(), account.product(),
                 Money.of("-0.01"), account.accruedInterest(), account.lastAccrualDate(), NOW, 0, NOW, 1L);
 
@@ -56,7 +56,7 @@ class AccountTest {
     }
 
     @Test
-    void entriesAreNumberedInBookingOrder() {
+    void deposit_SeveralBookings_NumbersEntriesInBookingOrder() {
         var first = account.deposit(Money.of("10.00"), "p1", NOW);
         var second = account.withdraw(Money.of("4.00"), "p2", NOW);
         var third = account.creditReturnedWithdrawal(Money.of("4.00"), "p2", NOW);
@@ -67,7 +67,7 @@ class AccountTest {
     }
 
     @Test
-    void aBookerWhoseClockIsBehindDoesNotBookIntoThePast() {
+    void deposit_ClockBehindLastBooking_KeepsLastBookingTime() {
         // Instance A books at 09:00:00.500; instance B's clock is 300 ms behind.
         var onA = account.deposit(Money.of("10.00"), "p1", NOW.plusMillis(500));
         var onB = account.deposit(Money.of("5.00"), "p2", NOW.plusMillis(200));
@@ -79,7 +79,7 @@ class AccountTest {
     }
 
     @Test
-    void withdrawalDebitsAtOnceAndNeverOverdraws() {
+    void withdraw_WithinAndBeyondBalance_DebitsAtOnceAndNeverOverdraws() {
         account.deposit(Money.of("100.00"), "t1", NOW);
 
         var entry = account.withdraw(Money.of("60.00"), "t2", NOW);
@@ -94,7 +94,7 @@ class AccountTest {
     }
 
     @Test
-    void aReturnedWithdrawalIsCreditedBack() {
+    void creditReturnedWithdrawal_ReturnedAmount_CreditsItBack() {
         account.deposit(Money.of("100.00"), "t1", NOW);
         account.withdraw(Money.of("60.00"), "t2", NOW);
 
@@ -106,7 +106,7 @@ class AccountTest {
     }
 
     @Test
-    void theAccountEarnsItsProductsRate() {
+    void accrueDay_EndOfDayBalance_EarnsProductRate() {
         var interest = account.accrueDay(LocalDate.of(2026, 1, 1), Money.of("1000.00"));
 
         assertThat(account.annualRate()).isEqualByComparingTo("0.0365");
@@ -114,7 +114,7 @@ class AccountTest {
     }
 
     @Test
-    void payoutIsDueAtTheEndOfTheProductsPayoutPeriod() {
+    void payoutDueAfter_LastDayOfPayoutPeriod_IsTrue() {
         var quarterly = Account.open(UUID.randomUUID(), UUID.randomUUID(),
                 new SavingsProduct("Q", 1, "Quarterly", new BigDecimal("0.0365"), PayoutFrequency.QUARTERLY), NOW,
                 BERLIN);
@@ -126,14 +126,14 @@ class AccountTest {
     }
 
     @Test
-    void interestStartsOnTheOpeningDayAndMustBeAccruedWithoutGaps() {
+    void accrueDay_OpeningDayThenGap_StartsOnOpeningDayAndRefusesGaps() {
         assertThat(account.nextAccrualDate()).isEqualTo(LocalDate.of(2026, 1, 1));
         assertThatIllegalStateException()
                 .isThrownBy(() -> account.accrueDay(LocalDate.of(2026, 1, 2), Money.of("1000.00")));
     }
 
     @Test
-    void payoutRoundsDownToCentsAndCarriesTheRemainder() {
+    void payOutInterest_SubCentAccrual_RoundsDownAndCarriesRemainder() {
         account.deposit(Money.of("1000.00"), "p1", NOW);
         account.accrueDay(LocalDate.of(2026, 1, 1), Money.of("1000.00"));   // 0.10
         account.accrueDay(LocalDate.of(2026, 1, 2), Money.of("999.95"));    // 0.099995
@@ -146,7 +146,7 @@ class AccountTest {
     }
 
     @Test
-    void nothingIsPaidBeforeAWholeCentIsEarned() {
+    void payOutInterest_LessThanOneCent_PaysNothing() {
         account.accrueDay(LocalDate.of(2026, 1, 1), Money.of("99.00"));    // 0.0099
 
         assertThat(account.payOutInterest(JANUARY, NOW)).isEmpty();
@@ -154,7 +154,7 @@ class AccountTest {
     }
 
     @Test
-    void theCarriedRemainderIsPaidOnceItAddsUpToACent() {
+    void payOutInterest_CarriedRemainderReachesOneCent_PaysIt() {
         account.accrueDay(LocalDate.of(2026, 1, 1), Money.of("99.00"));    // 0.0099
         account.payOutInterest(JANUARY, NOW);
         account.accrueDay(LocalDate.of(2026, 1, 2), Money.of("99.00"));    // + 0.0099 = 0.0198

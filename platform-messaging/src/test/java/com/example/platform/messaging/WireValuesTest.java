@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 class WireValuesTest {
 
     @Test
-    void anIdMustBePresentShortEnoughAndFreeOfNul() {
+    void id_BlankTooLongOrNul_ThrowsInvalidMessage() {
         assertThat(WireValues.id("tr-1", "transfer_id", 10)).isEqualTo("tr-1");
         assertThatThrownBy(() -> WireValues.id(" ", "transfer_id", 10)).hasMessage("Missing transfer_id");
         assertThatThrownBy(() -> WireValues.id("x".repeat(11), "transfer_id", 10))
@@ -19,19 +19,19 @@ class WireValuesTest {
     }
 
     @Test
-    void lengthsCountCharactersNotUtf16Units() {
+    void id_SupplementaryCharacters_CountsCodePoints() {
         assertThat(WireValues.id("😀".repeat(10), "id", 10)).hasSize(20);
     }
 
     @Test
-    void textIsShortenedNotRefused() {
+    void text_TooLongOrNul_IsShortenedAndCleaned() {
         assertThat(WireValues.text("abcdef", 3)).isEqualTo("abc");
         assertThat(WireValues.text("😀😀😀", 2)).isEqualTo("😀😀");
         assertThat(WireValues.text("a\u0000b", 10)).isEqualTo("a b");
     }
 
     @Test
-    void amountsArePlainDecimalsThatFitTheDatabase() {
+    void plainAmount_MalformedOrTooLarge_ThrowsInvalidMessage() {
         assertThat(WireValues.plainAmount("250.5")).isEqualByComparingTo("250.50");
         assertThat(WireValues.plainAmount("0")).isEqualByComparingTo("0");
         assertThat(WireValues.plainAmount("9".repeat(17) + ".99")).isNotNull();
@@ -42,14 +42,14 @@ class WireValuesTest {
     }
 
     @Test
-    void timestampsRoundTrip() {
+    void timestamp_Instant_RoundTrips() {
         var instant = Instant.parse("2026-11-23T09:15:00.123456789Z");
         assertThat(WireValues.instant(WireValues.timestamp(instant), "occurred_at")).isEqualTo(instant);
         assertThatThrownBy(() -> WireValues.instant(null, "occurred_at")).hasMessage("Missing occurred_at");
     }
 
     @Test
-    void uuidsMustBePresentAndWellFormed() {
+    void uuid_MissingOrMalformed_ThrowsInvalidMessage() {
         assertThatThrownBy(() -> WireValues.uuid("", "account_id")).hasMessage("Missing account_id");
         assertThatThrownBy(() -> WireValues.uuid("nope", "account_id")).isInstanceOf(InvalidMessageException.class);
     }

@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 class SavingsProductTest {
 
     @Test
-    void theRateIsKeptWithFourFractionDigits() {
+    void savingsProduct_RateWithFewerDigits_KeepsFourFractionDigits() {
         var product = new SavingsProduct("INSTANT_ACCESS", 1, "Instant access", new BigDecimal("0.025"),
                 PayoutFrequency.MONTHLY);
 
@@ -17,7 +17,7 @@ class SavingsProductTest {
     }
 
     @Test
-    void invalidTermsAreRefused() {
+    void savingsProduct_InvalidTerms_Throws() {
         assertThatIllegalArgumentException().isThrownBy(() ->
                 new SavingsProduct("instant", 1, "x", BigDecimal.ONE, PayoutFrequency.MONTHLY));
         assertThatIllegalArgumentException().isThrownBy(() ->

@@ -24,7 +24,7 @@ class TransferListenersTest {
     private final TransferListeners listeners = new TransferListeners(transfers);
 
     @Test
-    void aCurrentAccountEventOfANewerTypeIsSkipped() throws Exception {
+    void onCurrentAccountEvent_EventOfNewerType_IsSkipped() throws Exception {
         var event = CurrentAccountEvent.newBuilder()
                 .setEventId(UUID.randomUUID().toString())
                 .setAccountId(UUID.randomUUID().toString())
@@ -37,7 +37,7 @@ class TransferListenersTest {
     }
 
     @Test
-    void aSavingsEventOfANewerTypeIsSkipped() throws Exception {
+    void onSavingsEvent_EventOfNewerType_IsSkipped() throws Exception {
         var event = AccountEvent.newBuilder()
                 .setEventId(UUID.randomUUID().toString())
                 .setAccountId(UUID.randomUUID().toString())

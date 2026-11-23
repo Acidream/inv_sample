@@ -23,7 +23,7 @@ class DeadLetterIT {
     MeterRegistry registry;
 
     @Test
-    void unparseableMessageIsDeadLetteredWithoutRetriesAndCounted() {
+    void onMessage_UnparseableMessage_IsDeadLetteredWithoutRetriesAndCounted() {
         var key = UUID.randomUUID().toString();
         var garbage = "definitely not protobuf".getBytes(StandardCharsets.UTF_8);
         var before = deadLettered();

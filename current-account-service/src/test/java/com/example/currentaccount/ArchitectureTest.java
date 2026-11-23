@@ -16,7 +16,7 @@ class ArchitectureTest {
             .importPackages("com.example.currentaccount");
 
     @Test
-    void layersOnlyDependInwards() {
+    void layers_ProductionClasses_OnlyDependInwards() {
         layeredArchitecture().consideringOnlyDependenciesInLayers()
                 .layer("Domain").definedBy("..currentaccount.domain..")
                 .layer("Application").definedBy("..currentaccount.application..")
@@ -29,7 +29,7 @@ class ArchitectureTest {
     }
 
     @Test
-    void domainIsPlainJava() {
+    void domain_ProductionClasses_IsPlainJava() {
         noClasses().that().resideInAPackage("..currentaccount.domain..")
                 .should().dependOnClassesThat().resideOutsideOfPackages("java..", "..currentaccount.domain..")
                 .check(CLASSES);
@@ -37,14 +37,14 @@ class ArchitectureTest {
 
     /** ADR 0018: services share only the contracts. */
     @Test
-    void knowsNoOtherServicesCode() {
+    void serviceCode_ProductionClasses_KnowsNoOtherService() {
         noClasses().should().dependOnClassesThat()
                 .resideInAnyPackage("com.example.savings..", "com.example.transfers..")
                 .check(CLASSES);
     }
 
     @Test
-    void useCasesDoNotKnowAboutWireFormatsOrInfrastructure() {
+    void useCases_ProductionClasses_DoNotKnowWireFormatsOrInfrastructure() {
         noClasses().that().resideInAPackage("..currentaccount.application..")
                 .should().dependOnClassesThat().resideInAnyPackage(
                         "com.example.events..", "com.example.platform..",

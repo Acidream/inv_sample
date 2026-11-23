@@ -24,7 +24,7 @@ class PostingTest {
     private static final Instant NOON = Instant.parse("2026-03-02T11:00:00Z");
 
     @Test
-    void depositMovesMoneyFromTransferClearingToTheCustomer() {
+    void of_DepositEntry_DebitsClearingAndCreditsCustomer() {
         var entry = new LedgerEntry(null, ACCOUNT, 1,
                 EntryType.DEPOSIT, Money.of("100.00"), Money.of("100.00"), "pay-1",
                 NOON);
@@ -38,7 +38,7 @@ class PostingTest {
     }
 
     @Test
-    void withdrawalMovesMoneyFromTheCustomerToClearing() {
+    void of_WithdrawalEntry_DebitsCustomerAndCreditsClearing() {
         var entry = new LedgerEntry(null, ACCOUNT, 1,
                 EntryType.WITHDRAWAL, Money.of("-40.00"), Money.of("60.00"), "wd-1",
                 NOON);
@@ -51,7 +51,7 @@ class PostingTest {
     }
 
     @Test
-    void aReturnedWithdrawalMovesTheMoneyBackToTheCustomer() {
+    void of_WithdrawalReturnEntry_DebitsClearingAndCreditsCustomer() {
         var entry = new LedgerEntry(null, ACCOUNT, 1,
                 EntryType.WITHDRAWAL_RETURN, Money.of("40.00"), Money.of("100.00"),
                 "wd-1", NOON);
@@ -64,7 +64,7 @@ class PostingTest {
     }
 
     @Test
-    void interestPayoutSettlesThePayableToTheCustomer() {
+    void of_InterestEntry_DebitsPayableAndCreditsCustomer() {
         var entry = new LedgerEntry(null, ACCOUNT, 1,
                 EntryType.INTEREST, Money.of("3.10"), Money.of("1003.10"),
                 "interest:2026-01", NOON);
@@ -77,7 +77,7 @@ class PostingTest {
     }
 
     @Test
-    void accrualIsAnExpenseOwedToTheCustomerWithSubCentPrecision() {
+    void interestAccrual_SubCentInterest_DebitsExpenseAndCreditsPayable() {
         var day = LocalDate.parse("2026-01-31");
 
         var posting = Posting.interestAccrual(ACCOUNT, day, new BigDecimal("0.0027397260"), NOON);
@@ -90,7 +90,7 @@ class PostingTest {
     }
 
     @Test
-    void valueDateIsTheBusinessDayNotTheUtcDay() {
+    void of_BookedAroundMidnight_UsesBusinessDayAsValueDate() {
         // 23:30 UTC on 31 January is already 1 February in Berlin.
         var lateEvening = Instant.parse("2026-01-31T23:30:00Z");
         var entry = new LedgerEntry(null, ACCOUNT, 1,
@@ -101,7 +101,7 @@ class PostingTest {
     }
 
     @Test
-    void anUnbalancedPostingCannotBeBuilt() {
+    void posting_UnbalancedLines_Throws() {
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> posting(debit(TRANSFER_CLEARING, new BigDecimal("100.00")),
                         credit(CUSTOMER, new BigDecimal("99.99"))))
@@ -109,19 +109,19 @@ class PostingTest {
     }
 
     @Test
-    void aPostingNeedsTwoSides() {
+    void posting_SingleLine_Throws() {
         assertThatIllegalArgumentException().isThrownBy(() -> posting(debit(CUSTOMER, BigDecimal.ONE)));
     }
 
     @Test
-    void linesMovePositiveAmountsWithAtMostTenFractionDigits() {
+    void postingLine_NonPositiveOrTooPrecise_Throws() {
         assertThatIllegalArgumentException().isThrownBy(() -> debit(CUSTOMER, BigDecimal.ZERO));
         assertThatIllegalArgumentException().isThrownBy(() -> debit(CUSTOMER, new BigDecimal("-1")));
         assertThatIllegalArgumentException().isThrownBy(() -> debit(CUSTOMER, new BigDecimal("0.00000000001")));
     }
 
     @Test
-    void balanceIsCheckedAcrossMoreThanTwoLines() {
+    void posting_ThreeLines_ChecksBalanceAcrossAll() {
         var posting = posting(debit(TRANSFER_CLEARING, new BigDecimal("10.00")),
                 credit(CUSTOMER, new BigDecimal("7.50")), credit(INTEREST_PAYABLE, new BigDecimal("2.5")));
 

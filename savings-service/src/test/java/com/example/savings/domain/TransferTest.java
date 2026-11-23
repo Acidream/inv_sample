@@ -16,7 +16,7 @@ class TransferTest {
     private static final Money AMOUNT = Money.of("40.00");
 
     @Test
-    void aCompletedWithdrawalCanBeReturnedOnce() {
+    void markReturned_CompletedWithdrawal_ReturnsOnce() {
         var transfer = Transfer.withdrawn("t1", ACCOUNT, AMOUNT, NOW);
 
         assertThat(transfer.markReturned(NOW)).isTrue();
@@ -25,21 +25,21 @@ class TransferTest {
     }
 
     @Test
-    void aRejectedWithdrawalNeverLeftSoItCannotComeBack() {
+    void markReturned_RejectedWithdrawal_ThrowsIllegalTransfer() {
         var transfer = Transfer.rejected("t1", ACCOUNT, AMOUNT, NOW);
 
         assertThatThrownBy(() -> transfer.markReturned(NOW)).isInstanceOf(IllegalTransferException.class);
     }
 
     @Test
-    void aDepositCannotBeReturnedToSavings() {
+    void markReturned_Deposit_ThrowsIllegalTransfer() {
         var transfer = Transfer.deposited("t1", ACCOUNT, AMOUNT, NOW);
 
         assertThatThrownBy(() -> transfer.markReturned(NOW)).isInstanceOf(IllegalTransferException.class);
     }
 
     @Test
-    void onlyTheSameMovementUnderTheSameIdIsAResend() {
+    void describes_SameOrDifferentMovement_MatchesOnlySameMovement() {
         var transfer = Transfer.withdrawn("t1", ACCOUNT, AMOUNT, NOW);
 
         assertThat(transfer.describes(Direction.OUT, ACCOUNT, Money.of("40.00"))).isTrue();
@@ -49,7 +49,7 @@ class TransferTest {
     }
 
     @Test
-    void aStoredTransferIsRebuiltWithTheSameState() {
+    void restore_StoredState_RebuildsSameState() {
         var returned = Transfer.withdrawn("t1", ACCOUNT, AMOUNT, NOW);
         returned.markReturned(NOW);
         var stored = new Transfer.State("t1", ACCOUNT, Direction.OUT, AMOUNT, Transfer.Status.RETURNED, NOW, NOW, 3L);
@@ -59,7 +59,7 @@ class TransferTest {
     }
 
     @Test
-    void onlyAWithdrawalCanBeStoredAsReturned() {
+    void restore_ReturnedDeposit_Throws() {
         var returnedDeposit = new Transfer.State("t1", ACCOUNT, Direction.IN, AMOUNT, Transfer.Status.RETURNED, NOW,
                 NOW, 3L);
 

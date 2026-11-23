@@ -23,7 +23,7 @@ class TransferTest {
     }
 
     @Test
-    void currentAccountToSavingsDebitsTheCurrentAccountThenCreditsSavings() {
+    void start_CurrentToSavings_DebitsCurrentAccountThenCreditsSavings() {
         var transfer = transfer(current, savings);
 
         assertThat(transfer.start(Optional.of(current), Optional.of(savings)))
@@ -36,7 +36,7 @@ class TransferTest {
     }
 
     @Test
-    void savingsToCurrentAccountDebitsSavingsThenCreditsTheCurrentAccount() {
+    void start_SavingsToCurrent_DebitsSavingsThenCreditsCurrentAccount() {
         var transfer = transfer(savings, current);
 
         assertThat(transfer.start(Optional.of(savings), Optional.of(current)))
@@ -47,7 +47,7 @@ class TransferTest {
     }
 
     @Test
-    void aRefusedCreditIsCompensatedAndTheTransferFails() {
+    void creditRefused_SavingsToCurrent_ReturnsMoneyAndFails() {
         var transfer = transfer(savings, current);
         transfer.start(Optional.of(savings), Optional.of(current));
         transfer.debited(Ledger.SAVINGS, savings.accountId());
@@ -60,7 +60,7 @@ class TransferTest {
     }
 
     @Test
-    void aRejectedDebitFailsWithoutMovingMoney() {
+    void debitRejected_Debiting_FailsWithoutMovingMoney() {
         var transfer = transfer(current, savings);
         transfer.start(Optional.of(current), Optional.of(savings));
 
@@ -69,7 +69,7 @@ class TransferTest {
     }
 
     @Test
-    void itWaitsUntilBothAccountsAreKnown() {
+    void start_AccountUnknown_Waits() {
         var transfer = transfer(current, savings);
 
         assertThat(transfer.start(Optional.of(current), Optional.empty())).isEqualTo(new Step.Wait());
@@ -79,7 +79,7 @@ class TransferTest {
     }
 
     @Test
-    void anAccountOfAnotherCustomerIsAnInvalidRequest() {
+    void start_AccountOfAnotherCustomer_FailsAsInvalidRequest() {
         var someoneElses = new KnownAccount(UUID.randomUUID(), UUID.randomUUID(), Ledger.SAVINGS);
         var transfer = transfer(current, someoneElses);
 
@@ -91,7 +91,7 @@ class TransferTest {
     }
 
     @Test
-    void onlyTransfersBetweenCurrentAccountAndSavingsAreSupported() {
+    void start_CurrentToCurrent_FailsAsInvalidRequest() {
         var otherCurrent = new KnownAccount(UUID.randomUUID(), CUSTOMER, Ledger.CURRENT_ACCOUNT);
         var transfer = transfer(current, otherCurrent);
 
@@ -101,7 +101,7 @@ class TransferTest {
     }
 
     @Test
-    void answersThatDontFitTheStateOrComeFromTheWrongLedgerAreContractViolations() {
+    void answer_WrongStateOrLedger_ThrowsIllegalTransferState() {
         var transfer = transfer(current, savings);
         assertThatThrownBy(() -> transfer.credited(Ledger.SAVINGS, savings.accountId()))
                 .isInstanceOf(IllegalTransferStateException.class);
@@ -116,7 +116,7 @@ class TransferTest {
     }
 
     @Test
-    void anAnswerForAnotherAccountUnderTheSameTransferIdIsAContractViolation() {
+    void answer_FromAnotherAccount_ThrowsIllegalTransferState() {
         var transfer = transfer(current, savings);
         transfer.start(Optional.of(current), Optional.of(savings));
         var otherCurrent = UUID.randomUUID();

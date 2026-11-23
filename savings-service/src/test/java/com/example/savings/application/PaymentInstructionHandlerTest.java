@@ -62,7 +62,7 @@ class PaymentInstructionHandlerTest {
     }
 
     @Test
-    void duplicateMessageChangesNothing() {
+    void handle_DuplicateMessage_ChangesNothing() {
         when(processedEvents.markProcessed("instruction:e1")).thenReturn(false);
 
         handler.handle(new TransferIn("e1", account.id(), "t1", Money.of("10.00")));
@@ -72,7 +72,7 @@ class PaymentInstructionHandlerTest {
     }
 
     @Test
-    void insufficientFundsIsABusinessOutcomeNotAnError() {
+    void handle_WithdrawalBeyondBalance_RejectsWithoutError() {
         when(processedEvents.markProcessed("instruction:e1")).thenReturn(true);
         when(accounts.get(account.id())).thenReturn(account);
         when(transfers.find("t1")).thenReturn(Optional.empty());
@@ -86,7 +86,7 @@ class PaymentInstructionHandlerTest {
     }
 
     @Test
-    void transferResentUnderNewMessageIdIsAppliedOnce() {
+    void handle_TransferResentUnderNewMessageId_AppliesOnce() {
         when(processedEvents.markProcessed("instruction:e2")).thenReturn(true);
         when(accounts.get(account.id())).thenReturn(account);
         when(transfers.find("t1")).thenReturn(Optional.of(Transfer.deposited("t1", account.id(), Money.of("10.00"),
@@ -100,7 +100,7 @@ class PaymentInstructionHandlerTest {
     }
 
     @Test
-    void transferIdReusedForADifferentMovementIsAContractViolation() {
+    void handle_TransferIdReusedForDifferentMovement_ThrowsIllegalTransfer() {
         when(processedEvents.markProcessed("instruction:e2")).thenReturn(true);
         when(accounts.get(account.id())).thenReturn(account);
         when(transfers.find("t1")).thenReturn(Optional.of(Transfer.deposited("t1", account.id(), Money.of("10.00"),
@@ -113,7 +113,7 @@ class PaymentInstructionHandlerTest {
     }
 
     @Test
-    void returnedWithdrawalIsCreditedBackOnce() {
+    void handle_ReturnSentTwice_CreditsBackOnce() {
         account.deposit(Money.of("100.00"), "t0", NOW);
         account.withdraw(Money.of("40.00"), "t1", NOW);
         var transfer = Transfer.withdrawn("t1", account.id(), Money.of("40.00"), NOW);
@@ -134,7 +134,7 @@ class PaymentInstructionHandlerTest {
     }
 
     @Test
-    void returningARejectedWithdrawalIsAContractViolation() {
+    void handle_ReturnOfRejectedWithdrawal_ThrowsIllegalTransfer() {
         when(processedEvents.markProcessed("instruction:e3")).thenReturn(true);
         when(transfers.find("t1")).thenReturn(Optional.of(Transfer.rejected("t1", account.id(), Money.of("40.00"),
                 NOW)));
@@ -145,7 +145,7 @@ class PaymentInstructionHandlerTest {
     }
 
     @Test
-    void returnForAnotherAccountIsRejected() {
+    void handle_ReturnForAnotherAccount_ThrowsIllegalTransfer() {
         when(processedEvents.markProcessed("instruction:e3")).thenReturn(true);
         when(transfers.find("t1")).thenReturn(Optional.of(Transfer.withdrawn("t1", UUID.randomUUID(),
                 Money.of("40.00"), NOW)));

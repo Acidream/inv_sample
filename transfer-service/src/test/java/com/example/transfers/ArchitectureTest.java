@@ -16,7 +16,7 @@ class ArchitectureTest {
             .importPackages("com.example.transfers");
 
     @Test
-    void layersOnlyDependInwards() {
+    void layers_ProductionClasses_OnlyDependInwards() {
         layeredArchitecture().consideringOnlyDependenciesInLayers()
                 .layer("Domain").definedBy("..transfers.domain..")
                 .layer("Application").definedBy("..transfers.application..")
@@ -29,7 +29,7 @@ class ArchitectureTest {
     }
 
     @Test
-    void domainIsPlainJava() {
+    void domain_ProductionClasses_IsPlainJava() {
         noClasses().that().resideInAPackage("..transfers.domain..")
                 .should().dependOnClassesThat().resideOutsideOfPackages("java..", "..transfers.domain..")
                 .check(CLASSES);
@@ -37,12 +37,12 @@ class ArchitectureTest {
 
     /** ADR 0018: the transfer service moves money; it knows nothing about savings products or code. */
     @Test
-    void knowsNoOtherServicesCode() {
+    void serviceCode_ProductionClasses_KnowsNoOtherService() {
         noClasses().should().dependOnClassesThat().resideInAPackage("com.example.savings..").check(CLASSES);
     }
 
     @Test
-    void useCasesDoNotKnowAboutWireFormatsOrInfrastructure() {
+    void useCases_ProductionClasses_DoNotKnowWireFormatsOrInfrastructure() {
         noClasses().that().resideInAPackage("..transfers.application..")
                 .should().dependOnClassesThat().resideInAnyPackage(
                         "com.example.events..", "com.example.platform..",

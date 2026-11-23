@@ -29,7 +29,7 @@ class InterestAccrualJobTest {
     private final SimpleMeterRegistry registry = new SimpleMeterRegistry();
 
     @Test
-    void oneFailingAccountDoesNotStopInterestForTheOthers() {
+    void run_OneAccountFails_AccruesTheOthers() {
         when(interest.lastCompletedDay()).thenReturn(YESTERDAY);
         when(interest.accountsDueForAccrual(eq(YESTERDAY), any(), anyInt()))
                 .thenReturn(List.of(BROKEN, BUSY, FINE))
@@ -47,7 +47,7 @@ class InterestAccrualJobTest {
     }
 
     @Test
-    void reportsHowManyDaysInterestIsBehind() {
+    void lagGauge_AccountsBehind_ReportsDaysBehind() {
         when(interest.daysBehind()).thenReturn(3L);
         new InterestAccrualJob(interest, registry);
 
