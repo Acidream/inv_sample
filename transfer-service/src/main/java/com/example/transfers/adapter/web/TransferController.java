@@ -13,27 +13,24 @@ import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Transfers between a customer's own accounts. {@code PUT} only accepts the request into the command
+ * Transfers between a customer's own accounts. {@code POST} only accepts the request into the command
  * log and answers {@code 202} (ADR 0019); the outcome is read with {@code GET} or from
- * {@code payments.transfer-events.v1}. The client chooses the transfer id, so a retry is safe.
+ * {@code payments.transfer-events.v1}. The transfer id is derived from the {@link IdempotencyKey}, so a
+ * retry with the same key is safe, and a client can never pick an id another service uses, such as
+ * savings' {@code savings-order-<orderId>} (ADR 0020, 0024).
  */
 @RestController
 @RequestMapping("/transfers")
 class TransferController {
 
     static final String TRANSFER_ID = "[A-Za-z0-9._:-]{1,100}";
-    /**
-     * Transfer ids starting with {@code savings-} belong to savings, which derives them from its orders
-     * (ADR 0020) and sends them on the request topic, not through this API. A client may not take one:
-     * its transfer would be reported under an order's id, and savings' own request refused as a reuse.
-     */
-    static final String CLIENT_TRANSFER_ID = "(?!savings-)" + TRANSFER_ID;
 
     /** @param amount decimal string, e.g. "100.00" */
     record TransferRequestBody(
@@ -74,11 +71,12 @@ class TransferController {
         this.clock = clock;
     }
 
-    @PutMapping("/{transferId}")
-    ResponseEntity<TransferResponse> request(@PathVariable @Pattern(regexp = CLIENT_TRANSFER_ID,
-                    message = "must be letters, digits or ._:- (at most 100) and not start with savings-")
-            String transferId,
+    @PostMapping
+    ResponseEntity<TransferResponse> request(
+            @RequestHeader(IdempotencyKey.HEADER) @Pattern(regexp = IdempotencyKey.PATTERN,
+                    message = IdempotencyKey.MESSAGE) String idempotencyKey,
             @Valid @RequestBody TransferRequestBody body) {
+        var transferId = "tr-" + IdempotencyKey.uuid("transfer", idempotencyKey);
         var request = new Transfer.Request(transferId, body.customerId(), body.fromAccountId(), body.toAccountId(),
                 Money.of(body.amount()), clock.instant());
         var response = transfers.submit(request).map(TransferResponse::from)

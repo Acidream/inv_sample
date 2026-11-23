@@ -31,10 +31,13 @@ Feature: Savings products and their versions
     * hooks.stopSellingFrom(productCode, '2026-05-10T12:00:00Z')
 
     * def before = hooks.uuid()
-    Given path 'orders', before
+    * def beforeKey = before
+    Given path 'orders'
+    And header Idempotency-Key = beforeKey
     And request { customerId: '#(hooks.uuid())', productCode: '#(productCode)', productVersion: 1, amount: '10.00', fromAccountId: '#(hooks.uuid())' }
-    When method put
+    When method post
     Then status 202
+    * def before = response.orderId
     Given path 'orders', before
     And retry until responseStatus == 200
     When method get
@@ -42,10 +45,13 @@ Feature: Savings products and their versions
 
     * hooks.setClock('2026-05-10T12:00:00Z')
     * def after = hooks.uuid()
-    Given path 'orders', after
+    * def afterKey = after
+    Given path 'orders'
+    And header Idempotency-Key = afterKey
     And request { customerId: '#(hooks.uuid())', productCode: '#(productCode)', productVersion: 1, amount: '10.00', fromAccountId: '#(hooks.uuid())' }
-    When method put
+    When method post
     Then status 202
+    * def after = response.orderId
     Given path 'orders', after
     And retry until responseStatus == 200
     When method get
@@ -60,10 +66,13 @@ Feature: Savings products and their versions
     * hooks.productVersion(productCode, 2, 0.03, 'QUARTERLY', '2026-04-01T00:00:00+02:00')
 
     * def before = hooks.uuid()
-    Given path 'orders', before
+    * def beforeKey = before
+    Given path 'orders'
+    And header Idempotency-Key = beforeKey
     And request { customerId: '#(hooks.uuid())', productCode: '#(productCode)', productVersion: 1, amount: '10.00', fromAccountId: '#(hooks.uuid())' }
-    When method put
+    When method post
     Then status 202
+    * def before = response.orderId
     Given path 'orders', before
     And retry until responseStatus == 200
     When method get
@@ -77,20 +86,26 @@ Feature: Savings products and their versions
 
     # Terms the customer saw before the change are not sold any more
     * def stale = hooks.uuid()
-    Given path 'orders', stale
+    * def staleKey = stale
+    Given path 'orders'
+    And header Idempotency-Key = staleKey
     And request { customerId: '#(hooks.uuid())', productCode: '#(productCode)', productVersion: 1, amount: '10.00', fromAccountId: '#(hooks.uuid())' }
-    When method put
+    When method post
     Then status 202
+    * def stale = response.orderId
     Given path 'orders', stale
     And retry until responseStatus == 200
     When method get
     Then match response contains { status: 'REJECTED', rejectionReason: 'PRODUCT_VERSION_NOT_CURRENT', accountId: null }
 
     * def after = hooks.uuid()
-    Given path 'orders', after
+    * def afterKey = after
+    Given path 'orders'
+    And header Idempotency-Key = afterKey
     And request { customerId: '#(hooks.uuid())', productCode: '#(productCode)', productVersion: 2, amount: '10.00', fromAccountId: '#(hooks.uuid())' }
-    When method put
+    When method post
     Then status 202
+    * def after = response.orderId
     Given path 'orders', after
     And retry until responseStatus == 200
     When method get

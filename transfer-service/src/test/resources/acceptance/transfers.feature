@@ -9,10 +9,13 @@ Feature: Transfers between a customer's current account and savings (ADR 0015, 0
     * def transferId = 'tr-' + hooks.uuid()
 
   Scenario: money from the current account to savings: debit the current account, then credit savings
-    Given path 'transfers', transferId
+    * def transferKey = transferId
+    Given path 'transfers'
+    And header Idempotency-Key = transferKey
     And request { customerId: '#(customerId)', fromAccountId: '#(currentAccount)', toAccountId: '#(savingsAccount)', amount: '100.00' }
-    When method put
+    When method post
     Then status 202
+    * def transferId = response.transferId
     And match responseHeaders['Location'][0] == '/transfers/' + transferId
     And match response contains { transferId: '#(transferId)', status: 'RECEIVED' }
 
@@ -163,22 +166,28 @@ Feature: Transfers between a customer's current account and savings (ADR 0015, 0
 
   Scenario: requesting the same transfer again is safe; a different transfer under the same id is refused
     * def body = { customerId: '#(customerId)', fromAccountId: '#(currentAccount)', toAccountId: '#(savingsAccount)', amount: '100.00' }
-    Given path 'transfers', transferId
+    * def transferKey = transferId
+    Given path 'transfers'
+    And header Idempotency-Key = transferKey
     And request body
-    When method put
+    When method post
     Then status 202
+    * def transferId = response.transferId
     * def debit = hooks.awaitCurrentAccountInstruction(currentAccount, 'DEBIT_CURRENT_ACCOUNT')
 
-    Given path 'transfers', transferId
+    Given path 'transfers'
+    And header Idempotency-Key = transferKey
     And request body
-    When method put
+    When method post
     Then status 202
+    * def transferId = response.transferId
     And match response.status == 'DEBITING'
 
     * set body.amount = '100.01'
-    Given path 'transfers', transferId
+    Given path 'transfers'
+    And header Idempotency-Key = transferKey
     And request body
-    When method put
+    When method post
     Then status 422
 
   Scenario: a request that reuses a transfer id for a different transfer is dead-lettered
@@ -191,9 +200,11 @@ Feature: Transfers between a customer's current account and savings (ADR 0015, 0
   Scenario Outline: invalid requests are refused before they are accepted - <case>
     * def body = { customerId: '#(customerId)', fromAccountId: '#(currentAccount)', toAccountId: '#(savingsAccount)', amount: '1.00' }
     * set body.<field> = <value>
-    Given path 'transfers', transferId
+    * def transferKey = transferId
+    Given path 'transfers'
+    And header Idempotency-Key = transferKey
     And request body
-    When method put
+    When method post
     Then status 400
 
     Examples:
@@ -209,10 +220,18 @@ Feature: Transfers between a customer's current account and savings (ADR 0015, 0
     When method get
     Then status 404
 
-  Scenario: transfer ids of savings' orders can't be taken through the API
-    Given path 'transfers', 'savings-order-' + hooks.uuid()
+  Scenario: a client never chooses the transfer id, so savings' order ids can't be taken through the API
+    Given path 'transfers'
+    And header Idempotency-Key = 'savings-order-' + hooks.uuid()
     And request { customerId: '#(customerId)', fromAccountId: '#(currentAccount)', toAccountId: '#(savingsAccount)', amount: '1.00' }
-    When method put
+    When method post
+    Then status 202
+    And match response.transferId == '#regex tr-[0-9a-f-]{36}'
+
+  Scenario: a request without an idempotency key is refused, so a retry can never move money twice
+    Given path 'transfers'
+    And request { customerId: '#(customerId)', fromAccountId: '#(currentAccount)', toAccountId: '#(savingsAccount)', amount: '1.00' }
+    When method post
     Then status 400
 
   Scenario: a malformed transfer id in the path is a client error

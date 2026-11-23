@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Account queries. Accounts are opened by orders ({@code PUT /orders/{id}}, ADR 0020); money moves
+ * Account queries. Accounts are opened by orders ({@code POST /orders}, ADR 0020); money moves
  * through the transfer service. Nothing here changes state (ADR 0019).
  */
 @RestController

@@ -7,10 +7,13 @@ Feature: Reusable steps
     * def accountId = hooks.uuid()
     * def customerId = hooks.uuid()
     Given url baseUrl
-    And path 'current-accounts', accountId
+    * def accountKey = accountId
+    And path 'current-accounts'
+    And header Idempotency-Key = accountKey
     And request { customerId: '#(customerId)', overdraftLimit: '#(overdraftLimit)' }
-    When method put
+    When method post
     Then status 202
+    * def accountId = response.accountId
 
     Given path 'current-accounts', accountId
     And retry until responseStatus == 200

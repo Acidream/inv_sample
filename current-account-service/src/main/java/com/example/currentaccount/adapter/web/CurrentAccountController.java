@@ -23,16 +23,20 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Current accounts (ADR 0021). Every change is a {@code PUT} or {@code DELETE} that only accepts a
- * command into the command log and answers {@code 202} (ADR 0019); its effect is read with
- * {@code GET}. Ids are chosen by the client, so a retry is safe.
+ * Current accounts (ADR 0021). Every change only accepts a command into the command log and answers
+ * {@code 202} (ADR 0019); its effect is read with {@code GET}. Opening an account and receiving a
+ * payment are {@code POST}s whose ids are derived from the {@link IdempotencyKey}, so a retry with
+ * the same key is safe (ADR 0025); blocking is a state, set with {@code PUT} and cleared with
+ * {@code DELETE}.
  *
  * <p>Money moves between a customer's accounts through the transfer service, not here.
  */
@@ -112,8 +116,12 @@ class CurrentAccountController {
         this.clock = clock;
     }
 
-    @PutMapping("/{accountId}")
-    ResponseEntity<AccountResponse> open(@PathVariable UUID accountId, @Valid @RequestBody OpenRequest body) {
+    @PostMapping
+    ResponseEntity<AccountResponse> open(
+            @RequestHeader(IdempotencyKey.HEADER) @Pattern(regexp = IdempotencyKey.PATTERN,
+                    message = IdempotencyKey.MESSAGE) String idempotencyKey,
+            @Valid @RequestBody OpenRequest body) {
+        var accountId = IdempotencyKey.uuid("current-account", idempotencyKey);
         var open = new Command.Open(accountId, body.customerId(),
                 CurrentAccount.overdraftLimit(new BigDecimal(body.overdraftLimit())), clock.instant());
         var response = accounts.submit(open).map(AccountResponse::from).orElseGet(() -> AccountResponse.received(open));
@@ -131,10 +139,16 @@ class CurrentAccountController {
         return accounts.bookings(accountId, limit).stream().map(BookingResponse::from).toList();
     }
 
-    /** Money arriving from outside the bank, e.g. a salary. */
-    @PutMapping("/{accountId}/incoming-payments/{paymentId}")
+    /**
+     * Money arriving from outside the bank, e.g. a salary. The key is scoped to the account: the same
+     * key for two accounts names two payments.
+     */
+    @PostMapping("/{accountId}/incoming-payments")
     ResponseEntity<PaymentResponse> receive(@PathVariable UUID accountId,
-            @PathVariable @Pattern(regexp = PAYMENT_ID) String paymentId, @Valid @RequestBody PaymentRequest body) {
+            @RequestHeader(IdempotencyKey.HEADER) @Pattern(regexp = IdempotencyKey.PATTERN,
+                    message = IdempotencyKey.MESSAGE) String idempotencyKey,
+            @Valid @RequestBody PaymentRequest body) {
+        var paymentId = "pay-" + IdempotencyKey.uuid("incoming-payment", accountId + ":" + idempotencyKey);
         var payment = new Command.ReceivePayment(accountId, paymentId, Money.of(body.amount()), clock.instant());
         var response = accounts.submit(payment).map(PaymentResponse::from)
                 .orElseGet(() -> PaymentResponse.received(payment));

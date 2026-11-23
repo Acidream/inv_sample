@@ -23,9 +23,9 @@ flowchart LR
         CA --> CDB[(Postgres)]
     end
 
-    App -- "PUT /orders/{id} · GET" --> S
-    App -- "PUT /transfers/{id} · GET" --> T
-    App -- "PUT /current-accounts/{id} · GET" --> C
+    App -- "POST /orders · GET" --> S
+    App -- "POST /transfers · GET" --> T
+    App -- "POST /current-accounts · GET" --> C
     SA -- "TransferRequest<br/>(fund an order)" --> TR
     TS -- "payments.savings-instructions.v1" --> SA
     SA -- "savings.account-events.v1" --> TS
@@ -84,7 +84,7 @@ would change the design.
 - **Products**: savings products (`INSTANT_ACCESS`, `QUARTERLY_INTEREST`, `YEARLY_INTEREST`) come
   from Flyway reference data in immutable versions: annual rate and payout frequency. New terms are
   a new version.
-- **Orders**: `PUT /orders/{id}` with the product version the customer accepted, an amount and the
+- **Orders**: `POST /orders` with the product version the customer accepted, an amount and the
   current account to take it from. Savings opens the account on those terms, so they are fixed
   before any money moves, and requests a transfer. The order ends up `FUNDED`, `FUNDING_FAILED`
   (the account stays open and empty) or `REJECTED` (terms no longer sold).
@@ -109,7 +109,7 @@ sequenceDiagram
     participant S as Savings
     participant T as Transfers
     participant C as Current account
-    App->>S: PUT /orders/{id} (product v1, 250.00, from current account)
+    App->>S: POST /orders (product v1, 250.00, from current account)
     S->>S: open account on v1
     S-->>T: TransferRequest savings-order-{id}
     T->>C: DebitCurrentAccount
@@ -209,7 +209,7 @@ The acceptance features are the best entry point into the behaviour.
 
 Savings ([features](savings-service/src/test/resources/acceptance)):
 
-- [orders.feature](savings-service/src/test/resources/acceptance/orders.feature): an order opens the account and requests the money; funded, failed, rejected; idempotent `PUT`
+- [orders.feature](savings-service/src/test/resources/acceptance/orders.feature): an order opens the account and requests the money; funded, failed, rejected; idempotent `POST`
 - [products.feature](savings-service/src/test/resources/acceptance/products.feature): products on sale, new versions, stale terms refused, accounts keeping theirs
 - [deposits.feature](savings-service/src/test/resources/acceptance/deposits.feature): crediting, redelivery and re-sent transfers applied once, reused transfer id → DLT, paginated statement
 - [withdrawals.feature](savings-service/src/test/resources/acceptance/withdrawals.feature): immediate debit, rejection, no double spend, return once, contract violations → DLT
@@ -218,7 +218,7 @@ Savings ([features](savings-service/src/test/resources/acceptance)):
 
 Transfers:
 
-- [transfers.feature](transfer-service/src/test/resources/acceptance/transfers.feature): both directions, rejected debit, refused credit and its return, waiting for an account, timeouts, ownership, idempotent `PUT`, reused transfer id → DLT
+- [transfers.feature](transfer-service/src/test/resources/acceptance/transfers.feature): both directions, rejected debit, refused credit and its return, waiting for an account, timeouts, ownership, idempotent `POST`, reused transfer id → DLT
 
 Current accounts:
 
@@ -244,19 +244,20 @@ Open a current account and receive a salary, order a product funded from it, the
 
 ```bash
 CUSTOMER=3f2b8c1a-5d4e-4f6a-9b7c-1a2b3c4d5e6f
-CURRENT=$(uuidgen)
-curl -s -X PUT localhost:8082/current-accounts/$CURRENT -H 'Content-Type: application/json' \
-  -d "{\"customerId\":\"$CUSTOMER\",\"overdraftLimit\":\"200.00\"}"
-curl -s -X PUT localhost:8082/current-accounts/$CURRENT/incoming-payments/salary-1 -H 'Content-Type: application/json' \
+JSON='Content-Type: application/json'
+# Every POST that creates something carries an Idempotency-Key; send the same key to retry.
+CURRENT=$(curl -s -X POST localhost:8082/current-accounts -H "$JSON" -H "Idempotency-Key: $(uuidgen)" \
+  -d "{\"customerId\":\"$CUSTOMER\",\"overdraftLimit\":\"200.00\"}" | jq -r .accountId)
+curl -s -X POST localhost:8082/current-accounts/$CURRENT/incoming-payments -H "$JSON" -H 'Idempotency-Key: salary-1' \
   -d '{"amount":"1000.00"}'
 
-ORDER=$(uuidgen)
-curl -s -X PUT localhost:8080/orders/$ORDER -H 'Content-Type: application/json' \
-  -d "{\"customerId\":\"$CUSTOMER\",\"productCode\":\"INSTANT_ACCESS\",\"productVersion\":1,\"amount\":\"250.00\",\"fromAccountId\":\"$CURRENT\"}"
+ORDER=$(curl -s -X POST localhost:8080/orders -H "$JSON" -H "Idempotency-Key: $(uuidgen)" \
+  -d "{\"customerId\":\"$CUSTOMER\",\"productCode\":\"INSTANT_ACCESS\",\"productVersion\":1,\"amount\":\"250.00\",\"fromAccountId\":\"$CURRENT\"}" \
+  | jq -r .orderId)
 curl -s localhost:8080/orders/$ORDER                    # FUNDING, then FUNDED
 SAVINGS=$(curl -s localhost:8080/orders/$ORDER | jq -r .accountId)
 
-curl -s -X PUT localhost:8081/transfers/tr-$(uuidgen) -H 'Content-Type: application/json' \
+curl -s -X POST localhost:8081/transfers -H "$JSON" -H "Idempotency-Key: $(uuidgen)" \
   -d "{\"customerId\":\"$CUSTOMER\",\"fromAccountId\":\"$SAVINGS\",\"toAccountId\":\"$CURRENT\",\"amount\":\"100.00\"}"
 
 curl -s localhost:8080/accounts/$SAVINGS
@@ -275,7 +276,7 @@ Savings (`:8080`):
 | Method | Path | |
 |---|---|---|
 | `GET` | `/products` | products on sale with their current version: `code`, `version`, `name`, `annualRate`, `payoutFrequency` |
-| `PUT` | `/orders/{orderId}` | `{ customerId, productCode, productVersion, amount: "250.00", fromAccountId }` → `202` + `Location`, status `RECEIVED`. The same order again → `202` with its current state; a different order under the same id → `422` |
+| `POST` | `/orders` | `Idempotency-Key` header, `{ customerId, productCode, productVersion, amount: "250.00", fromAccountId }` → `202` + `Location` and `orderId`, status `RECEIVED`. The same key and order again → `202` with its current state; a different order under the same key → `422` |
 | `GET` | `/orders/{orderId}` | `FUNDING`, `FUNDED`, `FUNDING_FAILED` or `REJECTED`, with `accountId`; `404` until the order has been applied |
 | `GET` | `/accounts/{id}` | balance, accrued interest and the product version it was opened on; amounts as strings |
 | `GET` | `/accounts/{id}/transactions?limit=20&cursor=…` | newest first, keyset-paginated, `nextCursor`; each entry has its `entryNo` (1, 2, 3, ... per account) |
@@ -284,19 +285,22 @@ Transfers (`:8081`):
 
 | Method | Path | |
 |---|---|---|
-| `PUT` | `/transfers/{transferId}` | `{ customerId, fromAccountId, toAccountId, amount: "100.00" }` → `202` + `Location`. Same idempotency rules as orders. Ids starting with `savings-` are reserved for savings' orders → `400` |
+| `POST` | `/transfers` | `Idempotency-Key` header, `{ customerId, fromAccountId, toAccountId, amount: "100.00" }` → `202` + `Location` and `transferId` (`tr-…`, derived from the key). Same idempotency rules as orders |
 | `GET` | `/transfers/{transferId}` | `AWAITING_ACCOUNTS`, `DEBITING`, `CREDITING`, `RETURNING`, `COMPLETED` or `FAILED` with `failureReason` and `failureDetail` |
 
 Current accounts (`:8082`):
 
 | Method | Path | |
 |---|---|---|
-| `PUT` | `/current-accounts/{accountId}` | `{ customerId, overdraftLimit: "200.00" }` → `202` + `Location`, status `RECEIVED`. Same idempotency rules as orders |
+| `POST` | `/current-accounts` | `Idempotency-Key` header, `{ customerId, overdraftLimit: "200.00" }` → `202` + `Location` and `accountId`, status `RECEIVED`. Same idempotency rules as orders |
 | `GET` | `/current-accounts/{accountId}` | `OPEN` or `BLOCKED`, `balance`, `overdraftLimit`, `available`, `blockReason`; `404` until opened |
 | `GET` | `/current-accounts/{accountId}/bookings?limit=50` | newest first: `type` (`INCOMING_PAYMENT`, `TRANSFER_DEBIT`, `TRANSFER_CREDIT`), signed `amount`, `balanceAfter`, `reference` |
-| `PUT` | `/current-accounts/{accountId}/incoming-payments/{paymentId}` | `{ amount }` → `202`; booked once per payment id; a different payment under the same id → `422` |
+| `POST` | `/current-accounts/{accountId}/incoming-payments` | `Idempotency-Key` header (per account), `{ amount }` → `202` + `Location` and `paymentId`; booked once per key; a different payment under the same key → `422` |
 | `GET` | `/current-accounts/{accountId}/incoming-payments/{paymentId}` | `BOOKED`, or `REJECTED` with `rejectionReason` (unknown account) |
 | `PUT` / `DELETE` | `/current-accounts/{accountId}/block` | `{ reason }` blocks, `DELETE` unblocks → `202`; `404` for an account that isn't open |
 
-Errors are [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details. When Kafka can't take a
-command, `PUT` answers `503` and nothing was accepted; retry with the same id.
+Errors are [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details. A `POST` without an
+`Idempotency-Key` is refused with `400`: the id of what it creates is derived from the key, so the
+same key always means the same resource ([ADR 0025](docs/adr/0025-post-with-an-idempotency-key.md)).
+When Kafka can't take a command, the request answers `503` and nothing was accepted; retry with the
+same key.

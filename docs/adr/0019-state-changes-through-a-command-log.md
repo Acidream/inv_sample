@@ -1,6 +1,6 @@
 # 0019 – State changes only through a command log; REST for queries
 
-Date: 2026-11-23 · Status: Accepted · Intake outside transactions, products off sale as of a date: [0024](0024-outcomes-checked-against-own-records.md)
+Date: 2026-11-23 · Status: Accepted · REST intake is `POST` with an `Idempotency-Key`: [0025](0025-post-with-an-idempotency-key.md) · Intake outside transactions, products off sale as of a date: [0024](0024-outcomes-checked-against-own-records.md)
 
 ## Context
 

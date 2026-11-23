@@ -34,7 +34,8 @@ A review of the whole platform found six weaknesses, none of which had lost mone
     the source for a debit or its rejection, the target for a credit or its refusal, the savings
     source for a return. Otherwise `IllegalTransferStateException`, dead-lettered.
   - Transfer ids starting with `savings-` are reserved for savings and refused by
-    `PUT /transfers/{id}` with `400`. They are still read through `GET`.
+    `PUT /transfers/{id}` with `400`. They are still read through `GET`. (Superseded by ADR 0025:
+    clients no longer choose transfer ids at all, so the reservation holds by construction.)
 - **Invalid messages are named.** `InvalidMessageException` (platform-messaging) is what the
   anti-corruption layers throw, and what `DeadLetters` treats as never succeeding, next to
   `InvalidProtocolBufferException` and each service's own contract violations: savings'

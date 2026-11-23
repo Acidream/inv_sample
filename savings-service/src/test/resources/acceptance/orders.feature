@@ -15,10 +15,13 @@ Feature: Orders open and fund savings accounts (ADR 0020)
       """
 
   Scenario: an order opens the account on the accepted terms and asks the transfer service for the money
-    Given path 'orders', orderId
+    * def orderKey = orderId
+    Given path 'orders'
+    And header Idempotency-Key = orderKey
     And request order
-    When method put
+    When method post
     Then status 202
+    * def orderId = response.orderId
     And match responseHeaders['Location'][0] == '/orders/' + orderId
     And match response contains { orderId: '#(orderId)', status: 'RECEIVED', amount: '250.00' }
 
@@ -73,10 +76,13 @@ Feature: Orders open and fund savings accounts (ADR 0020)
     Then match response.balance == '250.00'
 
   Scenario: a failed funding transfer leaves the account open and empty
-    Given path 'orders', orderId
+    * def orderKey = orderId
+    Given path 'orders'
+    And header Idempotency-Key = orderKey
     And request order
-    When method put
+    When method post
     Then status 202
+    * def orderId = response.orderId
     Given path 'orders', orderId
     And retry until responseStatus == 200
     When method get
@@ -95,10 +101,13 @@ Feature: Orders open and fund savings accounts (ADR 0020)
   Scenario: a transfer reported completed without the deposit booked in savings funds nothing
     # Transfer ids are chosen by whoever requests a transfer, so the report alone proves nothing: only
     # the deposit savings booked itself, of the order's amount to the order's account, funds the order.
-    Given path 'orders', orderId
+    * def orderKey = orderId
+    Given path 'orders'
+    And header Idempotency-Key = orderKey
     And request order
-    When method put
+    When method post
     Then status 202
+    * def orderId = response.orderId
     Given path 'orders', orderId
     And retry until responseStatus == 200
     When method get
@@ -114,35 +123,44 @@ Feature: Orders open and fund savings accounts (ADR 0020)
 
   Scenario: an order for a product that is not on sale is rejected and opens nothing
     * set order.productCode = 'NO_SUCH_PRODUCT'
-    Given path 'orders', orderId
+    * def orderKey = orderId
+    Given path 'orders'
+    And header Idempotency-Key = orderKey
     And request order
-    When method put
+    When method post
     Then status 202
+    * def orderId = response.orderId
     Given path 'orders', orderId
     And retry until responseStatus == 200
     When method get
     Then match response contains { status: 'REJECTED', rejectionReason: 'PRODUCT_NOT_ON_SALE', accountId: null }
 
   Scenario: placing the same order again is safe; a different order under the same id is refused
-    Given path 'orders', orderId
+    * def orderKey = orderId
+    Given path 'orders'
+    And header Idempotency-Key = orderKey
     And request order
-    When method put
+    When method post
     Then status 202
+    * def orderId = response.orderId
     Given path 'orders', orderId
     And retry until responseStatus == 200
     When method get
     * def accountId = response.accountId
 
-    Given path 'orders', orderId
+    Given path 'orders'
+    And header Idempotency-Key = orderKey
     And request order
-    When method put
+    When method post
     Then status 202
+    * def orderId = response.orderId
     And match response contains { status: 'FUNDING', accountId: '#(accountId)' }
 
     * set order.amount = '999.00'
-    Given path 'orders', orderId
+    Given path 'orders'
+    And header Idempotency-Key = orderKey
     And request order
-    When method put
+    When method post
     Then status 422
     And match response.detail contains 'already placed with different details'
 
@@ -159,9 +177,11 @@ Feature: Orders open and fund savings accounts (ADR 0020)
 
   Scenario Outline: invalid orders are refused before they are accepted - <case>
     * set order.<field> = <value>
-    Given path 'orders', orderId
+    * def orderKey = orderId
+    Given path 'orders'
+    And header Idempotency-Key = orderKey
     And request order
-    When method put
+    When method post
     Then status 400
 
     Examples:

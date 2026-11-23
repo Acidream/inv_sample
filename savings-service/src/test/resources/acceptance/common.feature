@@ -8,7 +8,9 @@ Feature: Reusable steps
     * def productCode = hooks.product(rate, karate.get('payout', 'MONTHLY'))
     * def orderId = hooks.uuid()
     Given url baseUrl
-    And path 'orders', orderId
+    * def orderKey = orderId
+    And path 'orders'
+    And header Idempotency-Key = orderKey
     And request
       """
       {
@@ -16,8 +18,9 @@ Feature: Reusable steps
         fromAccountId: '#(hooks.uuid())'
       }
       """
-    When method put
+    When method post
     Then status 202
+    * def orderId = response.orderId
 
     Given path 'orders', orderId
     And retry until responseStatus == 200 && response.status == 'FUNDING'

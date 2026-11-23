@@ -10,7 +10,7 @@ option java_package = "com.example.events.payments.v1";
 
 // Topic: payments.transfer-requests.v1 (owned by the Payments team; the transfer service's command log).
 // Key:   transfer_id. Requests for one transfer are consumed in order.
-// Written by the transfer service's own REST intake (PUT /transfers/{id}) and by other services that
+// Written by the transfer service's own REST intake (POST /transfers) and by other services that
 // need money moved, e.g. savings when an order opens an account (ADR 0020).
 //
 // The transfer service moves money between two accounts of the same customer; it knows accounts, not

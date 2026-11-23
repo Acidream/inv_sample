@@ -16,15 +16,17 @@ import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Orders to open and fund a savings account (ADR 0020). {@code PUT} only accepts the order into the
+ * Orders to open and fund a savings account (ADR 0020). {@code POST} only accepts the order into the
  * command log and answers {@code 202}; the order is applied when savings consumes it (ADR 0019), and
- * its outcome is read with {@code GET}. The client chooses the order id, so a retry is safe.
+ * its outcome is read with {@code GET}. The order id is derived from the {@link IdempotencyKey}, so a
+ * retry with the same key is safe.
  */
 @RestController
 @RequestMapping("/orders")
@@ -72,8 +74,12 @@ class OrderController {
         this.clock = clock;
     }
 
-    @PutMapping("/{orderId}")
-    ResponseEntity<OrderResponse> place(@PathVariable UUID orderId, @Valid @RequestBody OpenAndFundRequest body) {
+    @PostMapping
+    ResponseEntity<OrderResponse> place(
+            @RequestHeader(IdempotencyKey.HEADER) @Pattern(regexp = IdempotencyKey.PATTERN,
+                    message = IdempotencyKey.MESSAGE) String idempotencyKey,
+            @Valid @RequestBody OpenAndFundRequest body) {
+        var orderId = IdempotencyKey.uuid("order", idempotencyKey);
         var request = new Order.Request(orderId, body.customerId(), body.productCode(), body.productVersion(),
                 Money.of(body.amount()), body.fromAccountId(), clock.instant());
         var response = orders.submit(request).map(OrderResponse::from).orElseGet(() -> OrderResponse.received(request));

@@ -29,3 +29,4 @@ Format: [Michael Nygard](https://cognitect.com/blog/2011/11/15/documenting-archi
 | [0022](0022-shared-technical-library.md) | A shared technical library for messaging; domain types stay per service | Accepted |
 | [0023](0023-watching-transfers-in-flight.md) | Watching transfers in flight: stuck transfers, late requests, account conflicts | Accepted |
 | [0024](0024-outcomes-checked-against-own-records.md) | Outcomes checked against own records; invalid messages named; intake outside transactions; dated off-sale | Accepted |
+| [0025](0025-post-with-an-idempotency-key.md) | REST creates with `POST` and an `Idempotency-Key`; ids derived from the key | Accepted |
