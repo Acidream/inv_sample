@@ -5,8 +5,8 @@ import java.math.RoundingMode;
 import java.util.Objects;
 
 /**
- * A positive amount of euros with cent precision. A copy of savings' value object, not a shared one
- * (ADR 0018): a technical library is extracted when a third service needs it.
+ * A positive amount of euros with cent precision. A copy of savings' value object, not a shared one:
+ * domain types stay in each service, only technical code is shared (ADR 0018, 0022).
  */
 public record Money(BigDecimal amount) {
 

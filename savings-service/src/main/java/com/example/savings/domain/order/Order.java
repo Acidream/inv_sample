@@ -2,6 +2,7 @@ package com.example.savings.domain.order;
 
 import com.example.savings.domain.Money;
 import com.example.savings.domain.SavingsProduct;
+import com.example.savings.domain.Transfer;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Objects;
@@ -111,21 +112,45 @@ public final class Order {
         return "savings-order-" + orderId;
     }
 
-    /** The funding transfer completed. Repeating it changes nothing. */
-    public void funded() {
+    /**
+     * The funding transfer completed. Repeating it changes nothing.
+     *
+     * <p>The transfer service reports outcomes by transfer id only, and a transfer id is chosen by
+     * whoever requests the transfer. So the report is believed only if savings itself booked the
+     * money: a deposit under the order's transfer id, to the order's account, of the order's amount.
+     *
+     * @param deposit what savings recorded under the order's transfer id, if anything
+     * @throws IllegalOrderTransitionException if savings booked no such deposit
+     */
+    public void funded(Optional<Transfer> deposit) {
         if (status == Status.FUNDED) {
             return;
         }
         requireFunding("funded");
+        if (deposit.isEmpty() || !deposit.get().describes(Transfer.Direction.IN, accountId, request.amount())) {
+            throw new IllegalOrderTransitionException("Transfer " + transferId + " of order " + request.orderId()
+                    + " was reported completed, but savings booked no deposit of " + request.amount()
+                    + " to account " + accountId + " under it");
+        }
         status = Status.FUNDED;
     }
 
-    /** The funding transfer failed: no money moved. The account stays open with a zero balance. */
-    public void fundingFailed(String reason) {
+    /**
+     * The funding transfer failed: no money moved. The account stays open with a zero balance.
+     *
+     * @param deposit what savings recorded under the order's transfer id, if anything; a credit to
+     *                savings is never taken back, so there must be none
+     * @throws IllegalOrderTransitionException if savings did book money under the transfer id
+     */
+    public void fundingFailed(String reason, Optional<Transfer> deposit) {
         if (status == Status.FUNDING_FAILED) {
             return;
         }
         requireFunding("failed");
+        if (deposit.isPresent()) {
+            throw new IllegalOrderTransitionException("Transfer " + transferId + " of order " + request.orderId()
+                    + " was reported failed, but savings booked " + deposit.get().amount() + " under it");
+        }
         status = Status.FUNDING_FAILED;
         failureReason = Objects.requireNonNull(reason, "reason");
     }

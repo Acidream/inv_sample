@@ -61,8 +61,9 @@ Feature: Orders open and fund savings accounts (ADR 0020)
       }
       """
 
-    # The transfer service moves the money, then reports the outcome
+    # The transfer service moves the money, then reports the outcome once savings has answered
     * hooks.depositTransfer(accountId, transfer.transferId, '250.00')
+    * def deposited = hooks.awaitEvent(accountId, 'MONEY_DEPOSITED')
     * hooks.transferCompleted(transfer.transferId)
     Given path 'orders', orderId
     And retry until response.status == 'FUNDED'
@@ -90,6 +91,26 @@ Feature: Orders open and fund savings accounts (ADR 0020)
     Given path 'accounts', accountId
     When method get
     Then match response.balance == '0.00'
+
+  Scenario: a transfer reported completed without the deposit booked in savings funds nothing
+    # Transfer ids are chosen by whoever requests a transfer, so the report alone proves nothing: only
+    # the deposit savings booked itself, of the order's amount to the order's account, funds the order.
+    Given path 'orders', orderId
+    And request order
+    When method put
+    Then status 202
+    Given path 'orders', orderId
+    And retry until responseStatus == 200
+    When method get
+    * def accountId = response.accountId
+    * def transfer = hooks.awaitTransferRequest(accountId)
+
+    * hooks.transferCompleted(transfer.transferId)
+    * def cause = hooks.awaitDeadLetter(transfer.transferId)
+    * match cause contains 'IllegalOrderTransitionException'
+    Given path 'orders', orderId
+    When method get
+    Then match response.status == 'FUNDING'
 
   Scenario: an order for a product that is not on sale is rejected and opens nothing
     * set order.productCode = 'NO_SUCH_PRODUCT'

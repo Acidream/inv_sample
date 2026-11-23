@@ -28,6 +28,12 @@ import org.springframework.web.bind.annotation.RestController;
 class TransferController {
 
     static final String TRANSFER_ID = "[A-Za-z0-9._:-]{1,100}";
+    /**
+     * Transfer ids starting with {@code savings-} belong to savings, which derives them from its orders
+     * (ADR 0020) and sends them on the request topic, not through this API. A client may not take one:
+     * its transfer would be reported under an order's id, and savings' own request refused as a reuse.
+     */
+    static final String CLIENT_TRANSFER_ID = "(?!savings-)" + TRANSFER_ID;
 
     /** @param amount decimal string, e.g. "100.00" */
     record TransferRequestBody(
@@ -69,7 +75,9 @@ class TransferController {
     }
 
     @PutMapping("/{transferId}")
-    ResponseEntity<TransferResponse> request(@PathVariable @Pattern(regexp = TRANSFER_ID) String transferId,
+    ResponseEntity<TransferResponse> request(@PathVariable @Pattern(regexp = CLIENT_TRANSFER_ID,
+                    message = "must be letters, digits or ._:- (at most 100) and not start with savings-")
+            String transferId,
             @Valid @RequestBody TransferRequestBody body) {
         var request = new Transfer.Request(transferId, body.customerId(), body.fromAccountId(), body.toAccountId(),
                 Money.of(body.amount()), clock.instant());

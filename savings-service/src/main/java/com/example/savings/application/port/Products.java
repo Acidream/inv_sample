@@ -11,7 +11,10 @@ import java.util.Optional;
  */
 public interface Products {
 
-    /** The current version of the product, empty if there is no such product or it isn't sold. */
+    /**
+     * The current version of the product at that moment, empty if there is no such product or it
+     * isn't sold then. Being sold is dated too: a product taken off sale is still on sale before that.
+     */
     Optional<SavingsProduct> onSale(String code, Instant at);
 
     /** The current version of every product on sale, ordered by code. */

@@ -38,7 +38,8 @@ class JdbcProducts implements Products {
     @Override
     public Optional<SavingsProduct> onSale(String code, Instant at) {
         return jdbc.sql(SELECT + """
-                        where p.code = :code and p.on_sale and v.valid_from <= :at
+                        where p.code = :code and (p.off_sale_from is null or :at < p.off_sale_from)
+                          and v.valid_from <= :at
                         order by v.valid_from desc, v.version desc
                         limit 1
                         """)
@@ -51,7 +52,7 @@ class JdbcProducts implements Products {
     @Override
     public List<SavingsProduct> allOnSale(Instant at) {
         return jdbc.sql("select distinct on (p.code) " + COLUMNS + FROM + """
-                        where p.on_sale and v.valid_from <= :at
+                        where (p.off_sale_from is null or :at < p.off_sale_from) and v.valid_from <= :at
                         order by p.code, v.valid_from desc, v.version desc
                         """)
                 .param("at", at.atOffset(ZoneOffset.UTC))

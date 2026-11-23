@@ -133,7 +133,7 @@ Feature: Opening current accounts, incoming payments and blocking (ADR 0021)
     * def accountId = hooks.uuid()
     * hooks.sendPaymentWithOverlongId(accountId)
     * def cause = hooks.awaitDeadLetter('current-account.commands.v1', accountId)
-    * match cause == 'java.lang.IllegalArgumentException'
+    * match cause == 'com.example.platform.messaging.InvalidMessageException'
 
   Scenario: a malformed payment id in the path is refused before anything is accepted
     Given path 'current-accounts', hooks.uuid(), 'incoming-payments', 'p!1'

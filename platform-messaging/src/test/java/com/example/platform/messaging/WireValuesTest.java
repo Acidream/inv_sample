@@ -36,7 +36,7 @@ class WireValuesTest {
         assertThat(WireValues.plainAmount("0")).isEqualByComparingTo("0");
         assertThat(WireValues.plainAmount("9".repeat(17) + ".99")).isNotNull();
         for (var bad : new String[] {"-1", "1e3", "1.001", " 1", "1,00", ""}) {
-            assertThatThrownBy(() -> WireValues.plainAmount(bad)).isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> WireValues.plainAmount(bad)).isInstanceOf(InvalidMessageException.class);
         }
         assertThatThrownBy(() -> WireValues.plainAmount("9".repeat(18))).hasMessageStartingWith("Amount too large");
     }
@@ -51,6 +51,6 @@ class WireValuesTest {
     @Test
     void uuidsMustBePresentAndWellFormed() {
         assertThatThrownBy(() -> WireValues.uuid("", "account_id")).hasMessage("Missing account_id");
-        assertThatThrownBy(() -> WireValues.uuid("nope", "account_id")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> WireValues.uuid("nope", "account_id")).isInstanceOf(InvalidMessageException.class);
     }
 }

@@ -284,7 +284,7 @@ Transfers (`:8081`):
 
 | Method | Path | |
 |---|---|---|
-| `PUT` | `/transfers/{transferId}` | `{ customerId, fromAccountId, toAccountId, amount: "100.00" }` → `202` + `Location`. Same idempotency rules as orders |
+| `PUT` | `/transfers/{transferId}` | `{ customerId, fromAccountId, toAccountId, amount: "100.00" }` → `202` + `Location`. Same idempotency rules as orders. Ids starting with `savings-` are reserved for savings' orders → `400` |
 | `GET` | `/transfers/{transferId}` | `AWAITING_ACCOUNTS`, `DEBITING`, `CREDITING`, `RETURNING`, `COMPLETED` or `FAILED` with `failureReason` and `failureDetail` |
 
 Current accounts (`:8082`):

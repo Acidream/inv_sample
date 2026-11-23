@@ -6,11 +6,12 @@ import com.example.events.savings.v1.OpenAndFund;
 import com.example.events.savings.v1.SavingsCommand;
 import com.example.savings.domain.Money;
 import com.example.savings.domain.order.Order;
+import com.example.platform.messaging.InvalidMessageException;
 import com.example.platform.messaging.WireValues;
 
 /**
  * Savings' command log, wire format to and from application commands. A malformed command throws
- * {@link IllegalArgumentException} and is dead-lettered.
+ * {@link InvalidMessageException} and is dead-lettered.
  */
 final class SavingsCommandTranslator {
 
@@ -31,7 +32,7 @@ final class SavingsCommandTranslator {
             case OPEN_AND_FUND -> {
                 var order = message.getOpenAndFund();
                 if (order.getProductVersion() < 1) {
-                    throw new IllegalArgumentException("Command " + commandId + " has no product_version");
+                    throw new InvalidMessageException("Command " + commandId + " has no product_version");
                 }
                 yield new Translated(commandId, new Order.Request(
                         WireValues.uuid(order.getOrderId(), "order_id"),
@@ -42,7 +43,7 @@ final class SavingsCommandTranslator {
                         WireValues.uuid(order.getFromAccountId(), "from_account_id"),
                         placedAt));
             }
-            case PAYLOAD_NOT_SET -> throw new IllegalArgumentException("Command " + commandId + " has no payload");
+            case PAYLOAD_NOT_SET -> throw new InvalidMessageException("Command " + commandId + " has no payload");
         };
     }
 

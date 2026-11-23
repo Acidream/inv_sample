@@ -13,6 +13,7 @@ import com.example.savings.domain.AccountEvent.MoneyWithdrawn;
 import com.example.savings.domain.AccountEvent.RejectionReason;
 import com.example.savings.domain.AccountEvent.WithdrawalRejected;
 import com.example.savings.domain.AccountEvent.WithdrawalReturned;
+import com.example.savings.domain.IllegalTransferException;
 import com.example.savings.domain.Money;
 import com.example.savings.domain.Transfer;
 import com.example.savings.domain.Transfer.Direction;
@@ -111,7 +112,7 @@ public class PaymentInstructionHandler {
         var transfer = transfers.find(returned.transferId())
                 .orElseThrow(() -> new UnknownTransferException(returned.transferId()));
         if (!transfer.accountId().equals(returned.accountId())) {
-            throw new IllegalArgumentException("Transfer " + transfer.transferId() + " does not belong to account "
+            throw new IllegalTransferException("Transfer " + transfer.transferId() + " does not belong to account "
                     + returned.accountId());
         }
         var now = clock.instant();
@@ -143,7 +144,7 @@ public class PaymentInstructionHandler {
         }
         var transfer = earlier.get();
         if (!transfer.describes(direction, accountId, amount)) {
-            throw new IllegalArgumentException("Transfer %s is already known as %s %s for account %s; message %s"
+            throw new IllegalTransferException("Transfer %s is already known as %s %s for account %s; message %s"
                     .formatted(transferId, transfer.direction(), transfer.amount().amount(), transfer.accountId(),
                             eventId)
                     + " describes %s %s for account %s".formatted(direction, amount.amount(), accountId));

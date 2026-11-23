@@ -1,5 +1,7 @@
 package com.example.currentaccount.adapter.messaging;
 
+import com.example.currentaccount.application.PaymentIdInUseException;
+import com.example.currentaccount.application.TransferIdInUseException;
 import com.example.currentaccount.config.CurrentAccountProperties;
 import com.example.platform.messaging.DeadLetters;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -11,8 +13,8 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.listener.CommonErrorHandler;
 
 /**
- * Error handling (ADR 0007): unparseable or invalid messages and a transfer id reused for something
- * else ({@link IllegalArgumentException}) are dead-lettered; everything else is retried.
+ * Error handling (ADR 0007): unparseable or invalid messages, and a payment id or transfer id reused
+ * for something else, are dead-lettered; everything else is retried.
  */
 @Configuration
 class KafkaConfig {
@@ -22,7 +24,7 @@ class KafkaConfig {
             CurrentAccountProperties properties) {
         var topics = properties.topics();
         return DeadLetters.errorHandler(template, registry, List.of(topics.commands(), topics.instructions()),
-                List.of());
+                List.of(PaymentIdInUseException.class, TransferIdInUseException.class));
     }
 
     /** For local development and tests; the instructions topic belongs to the Payments team. */

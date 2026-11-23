@@ -1,6 +1,6 @@
 # 0007 – Idempotent consumer, retries and a dead-letter topic
 
-Date: 2026-11-22 · Status: Accepted · Implementation shared by all services, table and metric names changed: [0022](0022-shared-technical-library.md)
+Date: 2026-11-22 · Status: Accepted · Implementation shared by all services, table and metric names changed: [0022](0022-shared-technical-library.md) · Which errors are dead-lettered: [0024](0024-outcomes-checked-against-own-records.md)
 
 ## Context
 
@@ -12,8 +12,9 @@ and must not block the partition behind them.
 
 **Idempotency**
 - Each instruction is applied in one DB transaction that starts with
-  `insert into processed_event (event_id) … on conflict do nothing`. Zero rows inserted means the
-  message was already applied: skip it and count `savings_messages_duplicate_total`.
+  `insert into processed_message (message_id) … on conflict do nothing` (platform-messaging's
+  `ProcessedMessages`; ids are prefixed by their source, e.g. `instruction:`). Zero rows inserted
+  means the message was already applied: skip it and count `savings_messages_duplicate_total`.
 - The marker commits or rolls back together with the business change, so there is no window where
   one exists without the other.
 - Offsets are committed per record (`ack-mode: record`) **after** the transaction commits. A crash in
@@ -34,19 +35,21 @@ and must not block the partition behind them.
   person and leaves money where Payments doesn't expect it, so a database failover of a few seconds
   or minutes must not park every instruction in flight. The price: an error that is wrongly treated
   as transient blocks its partition (one listener thread per partition, so only that one).
-  **SavingsConsumerLag** reports that, and the fix is to classify the exception as non-retryable.
+  **ConsumerBlocked** reports that, and the fix is to classify the exception as non-retryable.
 - So input the database would refuse never reaches it: `PaymentInstructionTranslator` rejects ids
   longer than their `varchar(100)` columns or containing NUL, and amounts that are not plain decimals
   fitting `numeric(19, 2)`. Refused only at insert, they would surface as a retried
   `DataIntegrityViolationException`. That exception as a whole stays retryable, because a duplicate
   key on `transfer_id` from a concurrent insert is meant to be retried.
 - Non-retryable errors go straight to `<topic>.DLT` with the original bytes and exception headers:
-  unparseable Protobuf, validation errors, unknown account or transfer, contract violations such
-  as returning a withdrawal that was rejected.
+  unparseable Protobuf, invalid values (`InvalidMessageException`, thrown by the anti-corruption
+  layer), unknown account or transfer, contract violations such as returning a withdrawal that was
+  rejected or reusing a transfer id. A plain `IllegalArgumentException` is retried: thrown from
+  deeper down it says nothing about the message (ADR 0024).
 - A rejected withdrawal (insufficient funds) is **not** an error; it's a normal outcome answered with
   a `WithdrawalRejected` event.
-- Every dead letter increments `savings_messages_dead_lettered_total{topic}`; the
-  **SavingsInstructionDeadLettered** alert pages on any increase. Parked is not lost, but until someone
+- Every dead letter increments `messages_dead_lettered_total{application, topic}`; the
+  **MessageDeadLettered** alert pages on any increase. Parked is not lost, but until someone
   acts, the money is not where Payments believes it is.
 
 **What we expect from Payments** (an instruction is a one-way message; no loss needs both sides)
@@ -62,8 +65,9 @@ and must not block the partition behind them.
 
 ## Consequences
 
-- `processed_event` and `transfer` grow with traffic. `RetentionJob` deletes `processed_event` rows
-  after 30 days (`savings.retention.processed-events`), far longer than any redelivery; a transfer
+- `processed_message` and `transfer` grow with traffic. `RetentionJob` deletes `processed_message`
+  rows after 30 days (`platform.messaging.retention.processed-messages`), far longer than any
+  redelivery; a transfer
   re-sent after that is still caught by `transfer_id`. At higher volumes, partitioning by day and
   dropping partitions would replace the deletes. `transfer` is business data and is kept as long as
   the ledger.

@@ -49,7 +49,7 @@ Feature: Deposits arrive from the customer's current account via Kafka
     * def credited = hooks.awaitEvent(accountId, 'MONEY_DEPOSITED')
     * hooks.depositTransfer(accountId, transferId, '999.00')
     * def cause = hooks.awaitDeadLetter(accountId)
-    * match cause contains 'IllegalArgumentException'
+    * match cause contains 'IllegalTransferException'
     Given path 'accounts', accountId
     When method get
     Then match response.balance == '100.00'
@@ -61,7 +61,7 @@ Feature: Deposits arrive from the customer's current account via Kafka
     * match tooLong.length == 101
     * hooks.depositTransfer(accountId, tooLong, '100.00')
     * def cause = hooks.awaitDeadLetter(accountId)
-    * match cause contains 'IllegalArgumentException'
+    * match cause contains 'InvalidMessageException'
     * hooks.deposit(accountId, '1.00')
     * def deposited = hooks.awaitEvent(accountId, 'MONEY_DEPOSITED')
     * match deposited.balance.amount == '1.00'

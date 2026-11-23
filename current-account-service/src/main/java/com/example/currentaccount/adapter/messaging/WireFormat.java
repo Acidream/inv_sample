@@ -11,6 +11,7 @@ import com.example.events.currentaccount.v1.OpenCurrentAccount;
 import com.example.events.currentaccount.v1.ReceivePayment;
 import com.example.events.currentaccount.v1.UnblockAccount;
 import com.example.events.payments.v1.CurrentAccountInstruction;
+import com.example.platform.messaging.InvalidMessageException;
 import com.example.platform.messaging.WireValues;
 import com.google.protobuf.Timestamp;
 import java.math.BigDecimal;
@@ -19,7 +20,7 @@ import java.util.UUID;
 
 /**
  * Anti-corruption layer for the wire formats: validates what comes in and builds what goes out.
- * Anything malformed throws {@link IllegalArgumentException}, which dead-letters the message; the
+ * Anything malformed throws {@link InvalidMessageException}, which dead-letters the message; the
  * technical checks are {@link WireValues}, the business ones (EUR, positive amounts) are here.
  */
 final class WireFormat {
@@ -51,7 +52,7 @@ final class WireFormat {
             }
             case BLOCK_ACCOUNT -> new Command.Block(accountId, reason(message.getBlockAccount().getReason()), at);
             case UNBLOCK_ACCOUNT -> new Command.Unblock(accountId, at);
-            case PAYLOAD_NOT_SET -> throw new IllegalArgumentException("Command without payload");
+            case PAYLOAD_NOT_SET -> throw new InvalidMessageException("Command without payload");
         };
     }
 
@@ -90,7 +91,7 @@ final class WireFormat {
             case CREDIT_CURRENT_ACCOUNT -> new Instruction(messageId, accountId,
                     reference(message.getCreditCurrentAccount().getTransferId(), "transfer_id"), Direction.CREDIT,
                     money(message.getCreditCurrentAccount().getAmount()), at);
-            case PAYLOAD_NOT_SET -> throw new IllegalArgumentException("Instruction " + messageId + " has no payload");
+            case PAYLOAD_NOT_SET -> throw new InvalidMessageException("Instruction " + messageId + " has no payload");
         };
     }
 
@@ -99,7 +100,7 @@ final class WireFormat {
     static Money money(com.example.events.common.v1.Money money) {
         var amount = amount(money);
         if (amount.signum() <= 0) {
-            throw new IllegalArgumentException("Amount must be positive: " + money.getAmount());
+            throw new InvalidMessageException("Amount must be positive: " + money.getAmount());
         }
         return new Money(amount);
     }
@@ -118,7 +119,7 @@ final class WireFormat {
 
     private static BigDecimal amount(com.example.events.common.v1.Money money) {
         if (!Money.CURRENCY.equals(money.getCurrency())) {
-            throw new IllegalArgumentException("Unsupported currency: " + money.getCurrency());
+            throw new InvalidMessageException("Unsupported currency: " + money.getCurrency());
         }
         return WireValues.plainAmount(money.getAmount());
     }

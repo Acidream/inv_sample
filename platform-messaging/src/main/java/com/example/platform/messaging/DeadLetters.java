@@ -49,7 +49,9 @@ public final class DeadLetters {
      *                       front, because Prometheus' {@code increase()} can't see the first increment
      *                       of a series that only appears when it happens
      * @param notRetryable   the service's own exceptions that mean "never succeeds", on top of
-     *                       {@link InvalidProtocolBufferException} and {@link IllegalArgumentException}
+     *                       {@link InvalidProtocolBufferException} and {@link InvalidMessageException}.
+     *                       A plain {@link IllegalArgumentException} is retried: it may come from a bug or
+     *                       a library and say nothing about the message.
      */
     public static CommonErrorHandler errorHandler(KafkaTemplate<String, byte[]> template, MeterRegistry registry,
             Collection<String> consumedTopics, Collection<Class<? extends Exception>> notRetryable) {
@@ -65,7 +67,7 @@ public final class DeadLetters {
             counters.computeIfAbsent(record.topic(), topic -> counter(registry, topic)).increment();
         }, backOff);
         List<Class<? extends Exception>> never = new ArrayList<>(
-                List.of(InvalidProtocolBufferException.class, IllegalArgumentException.class));
+                List.of(InvalidProtocolBufferException.class, InvalidMessageException.class));
         never.addAll(notRetryable);
         never.forEach(handler::addNotRetryableExceptions);
         return handler;

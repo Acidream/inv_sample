@@ -1,6 +1,7 @@
 package com.example.savings.adapter.messaging;
 
 import com.example.events.payments.v1.PaymentInstruction;
+import com.example.platform.messaging.InvalidMessageException;
 import com.example.platform.messaging.WireValues;
 import com.example.savings.application.PaymentInstruction.ReturnTransfer;
 import com.example.savings.application.PaymentInstruction.TransferIn;
@@ -9,7 +10,7 @@ import com.example.savings.domain.Money;
 
 /**
  * Anti-corruption layer: validates the Payments wire format and turns it into application commands.
- * Anything malformed throws {@link IllegalArgumentException}, which the error handler treats as
+ * Anything malformed throws {@link InvalidMessageException}, which the error handler treats as
  * non-retryable and sends to the dead-letter topic.
  *
  * <p>That includes values the database would refuse: ids longer than their columns, or containing a
@@ -45,15 +46,19 @@ final class PaymentInstructionTranslator {
             }
             case TRANSFER_RETURNED -> new ReturnTransfer(eventId, accountId,
                     id(message.getTransferReturned().getTransferId(), "transfer_id"));
-            case PAYLOAD_NOT_SET -> throw new IllegalArgumentException("Message " + eventId + " has no payload");
+            case PAYLOAD_NOT_SET -> throw new InvalidMessageException("Message " + eventId + " has no payload");
         };
     }
 
     static Money money(com.example.events.common.v1.Money money) {
         if (!Money.CURRENCY.equals(money.getCurrency())) {
-            throw new IllegalArgumentException("Unsupported currency: " + money.getCurrency());
+            throw new InvalidMessageException("Unsupported currency: " + money.getCurrency());
         }
-        return new Money(WireValues.plainAmount(money.getAmount())).requirePositive();
+        var amount = WireValues.plainAmount(money.getAmount());
+        if (amount.signum() <= 0) {
+            throw new InvalidMessageException("Amount must be positive: " + money.getAmount());
+        }
+        return new Money(amount);
     }
 
     /** An id that fits the {@code varchar(100)} columns. */

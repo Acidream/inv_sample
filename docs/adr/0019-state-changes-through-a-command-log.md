@@ -1,6 +1,6 @@
 # 0019 – State changes only through a command log; REST for queries
 
-Date: 2026-11-23 · Status: Accepted
+Date: 2026-11-23 · Status: Accepted · Intake outside transactions, products off sale as of a date: [0024](0024-outcomes-checked-against-own-records.md)
 
 ## Context
 
@@ -36,7 +36,8 @@ an error is corrected by a new entry.
 
 - an order's account id and its transfer id are derived from the order id;
 - an account opened by an order is opened at the time the order was placed (the command's
-  `occurred_at`), and the product version is checked as of that time.
+  `occurred_at`), and the product version, and whether the product is on sale at all, are checked
+  as of that time (ADR 0024).
 
 Not done yet, and needed before a replay can be compared byte for byte:
 

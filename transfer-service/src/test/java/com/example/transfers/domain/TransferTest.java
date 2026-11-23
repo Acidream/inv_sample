@@ -28,9 +28,9 @@ class TransferTest {
 
         assertThat(transfer.start(Optional.of(current), Optional.of(savings)))
                 .isEqualTo(new Step.DebitCurrentAccount(current.accountId(), "t1", AMOUNT));
-        assertThat(transfer.debited(Ledger.CURRENT_ACCOUNT))
+        assertThat(transfer.debited(Ledger.CURRENT_ACCOUNT, current.accountId()))
                 .isEqualTo(new Step.CreditSavings(savings.accountId(), "t1", AMOUNT));
-        assertThat(transfer.credited(Ledger.SAVINGS)).isEqualTo(new Step.Completed("t1"));
+        assertThat(transfer.credited(Ledger.SAVINGS, savings.accountId())).isEqualTo(new Step.Completed("t1"));
         assertThat(transfer.status()).isEqualTo(Transfer.Status.COMPLETED);
         assertThat(transfer.route()).contains(Transfer.Route.CURRENT_TO_SAVINGS);
     }
@@ -41,21 +41,21 @@ class TransferTest {
 
         assertThat(transfer.start(Optional.of(savings), Optional.of(current)))
                 .isEqualTo(new Step.DebitSavings(savings.accountId(), "t1", AMOUNT));
-        assertThat(transfer.debited(Ledger.SAVINGS))
+        assertThat(transfer.debited(Ledger.SAVINGS, savings.accountId()))
                 .isEqualTo(new Step.CreditCurrentAccount(current.accountId(), "t1", AMOUNT));
-        assertThat(transfer.credited(Ledger.CURRENT_ACCOUNT)).isEqualTo(new Step.Completed("t1"));
+        assertThat(transfer.credited(Ledger.CURRENT_ACCOUNT, current.accountId())).isEqualTo(new Step.Completed("t1"));
     }
 
     @Test
     void aRefusedCreditIsCompensatedAndTheTransferFails() {
         var transfer = transfer(savings, current);
         transfer.start(Optional.of(savings), Optional.of(current));
-        transfer.debited(Ledger.SAVINGS);
+        transfer.debited(Ledger.SAVINGS, savings.accountId());
 
-        assertThat(transfer.creditRefused(Ledger.CURRENT_ACCOUNT, "account closed"))
+        assertThat(transfer.creditRefused(Ledger.CURRENT_ACCOUNT, current.accountId(), "account closed"))
                 .isEqualTo(new Step.ReturnToSavings(savings.accountId(), "t1"));
         assertThat(transfer.status()).isEqualTo(Transfer.Status.RETURNING);
-        assertThat(transfer.returned(Ledger.SAVINGS))
+        assertThat(transfer.returned(Ledger.SAVINGS, savings.accountId()))
                 .isEqualTo(new Step.Failed("t1", Transfer.FailureReason.CREDIT_REFUSED, "account closed"));
     }
 
@@ -64,7 +64,7 @@ class TransferTest {
         var transfer = transfer(current, savings);
         transfer.start(Optional.of(current), Optional.of(savings));
 
-        assertThat(transfer.debitRejected(Ledger.CURRENT_ACCOUNT, "overdraft limit exceeded"))
+        assertThat(transfer.debitRejected(Ledger.CURRENT_ACCOUNT, current.accountId(), "overdraft limit exceeded"))
                 .isEqualTo(new Step.Failed("t1", Transfer.FailureReason.DEBIT_REJECTED, "overdraft limit exceeded"));
     }
 
@@ -103,13 +103,31 @@ class TransferTest {
     @Test
     void answersThatDontFitTheStateOrComeFromTheWrongLedgerAreContractViolations() {
         var transfer = transfer(current, savings);
-        assertThatThrownBy(() -> transfer.credited(Ledger.SAVINGS)).isInstanceOf(IllegalTransferStateException.class);
+        assertThatThrownBy(() -> transfer.credited(Ledger.SAVINGS, savings.accountId()))
+                .isInstanceOf(IllegalTransferStateException.class);
 
         transfer.start(Optional.of(current), Optional.of(savings));
-        assertThatThrownBy(() -> transfer.debited(Ledger.SAVINGS)).isInstanceOf(IllegalTransferStateException.class);
+        assertThatThrownBy(() -> transfer.debited(Ledger.SAVINGS, current.accountId()))
+                .isInstanceOf(IllegalTransferStateException.class);
 
-        transfer.debited(Ledger.CURRENT_ACCOUNT);
-        assertThatThrownBy(() -> transfer.creditRefused(Ledger.SAVINGS, "no"))
+        transfer.debited(Ledger.CURRENT_ACCOUNT, current.accountId());
+        assertThatThrownBy(() -> transfer.creditRefused(Ledger.SAVINGS, savings.accountId(), "no"))
+                .isInstanceOf(IllegalTransferStateException.class);
+    }
+
+    @Test
+    void anAnswerForAnotherAccountUnderTheSameTransferIdIsAContractViolation() {
+        var transfer = transfer(current, savings);
+        transfer.start(Optional.of(current), Optional.of(savings));
+        var otherCurrent = UUID.randomUUID();
+
+        assertThatThrownBy(() -> transfer.debited(Ledger.CURRENT_ACCOUNT, otherCurrent))
+                .isInstanceOf(IllegalTransferStateException.class)
+                .hasMessageContaining(otherCurrent.toString());
+        assertThat(transfer.status()).isEqualTo(Transfer.Status.DEBITING);
+
+        transfer.debited(Ledger.CURRENT_ACCOUNT, current.accountId());
+        assertThatThrownBy(() -> transfer.credited(Ledger.SAVINGS, UUID.randomUUID()))
                 .isInstanceOf(IllegalTransferStateException.class);
     }
 }

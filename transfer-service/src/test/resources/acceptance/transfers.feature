@@ -132,6 +132,17 @@ Feature: Transfers between a customer's current account and savings (ADR 0015, 0
     * def credit = hooks.awaitSavingsInstruction(savingsAccount, 'TRANSFER_FROM_CURRENT_ACCOUNT')
     * match hooks.stuckTransfers() == before
 
+  Scenario: an answer for another account under the transfer's id is dead-lettered and moves nothing
+    * hooks.requestTransfer(transferId, customerId, currentAccount, savingsAccount, '10.00')
+    * def debit = hooks.awaitCurrentAccountInstruction(currentAccount, 'DEBIT_CURRENT_ACCOUNT')
+    * def otherAccount = hooks.currentAccountOpened(customerId)
+    * hooks.currentAccountDebited(otherAccount, transferId, '10.00')
+    * def cause = hooks.awaitDeadLetter('current-account.events.v1', otherAccount)
+    * match cause == 'com.example.transfers.domain.IllegalTransferStateException'
+    Given path 'transfers', transferId
+    When method get
+    Then match response.status == 'DEBITING'
+
   Scenario: an account id announced again by another ledger is dead-lettered, not ignored
     * hooks.savingsAccountOpenedWithId(customerId, currentAccount)
     * def cause = hooks.awaitDeadLetter('savings.account-events.v1', currentAccount)
@@ -175,7 +186,7 @@ Feature: Transfers between a customer's current account and savings (ADR 0015, 0
     * def debit = hooks.awaitCurrentAccountInstruction(currentAccount, 'DEBIT_CURRENT_ACCOUNT')
     * hooks.requestTransfer(transferId, customerId, currentAccount, savingsAccount, '20.00')
     * def cause = hooks.awaitDeadLetter('payments.transfer-requests.v1', transferId)
-    * match cause == 'java.lang.IllegalArgumentException'
+    * match cause == 'com.example.transfers.application.TransferIdInUseException'
 
   Scenario Outline: invalid requests are refused before they are accepted - <case>
     * def body = { customerId: '#(customerId)', fromAccountId: '#(currentAccount)', toAccountId: '#(savingsAccount)', amount: '1.00' }
@@ -197,6 +208,12 @@ Feature: Transfers between a customer's current account and savings (ADR 0015, 0
     Given path 'transfers', 'tr-unknown'
     When method get
     Then status 404
+
+  Scenario: transfer ids of savings' orders can't be taken through the API
+    Given path 'transfers', 'savings-order-' + hooks.uuid()
+    And request { customerId: '#(customerId)', fromAccountId: '#(currentAccount)', toAccountId: '#(savingsAccount)', amount: '1.00' }
+    When method put
+    Then status 400
 
   Scenario: a malformed transfer id in the path is a client error
     Given path 'transfers', 'tr!1'

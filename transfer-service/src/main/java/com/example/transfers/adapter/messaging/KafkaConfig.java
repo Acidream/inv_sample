@@ -2,6 +2,7 @@ package com.example.transfers.adapter.messaging;
 
 import com.example.platform.messaging.DeadLetters;
 import com.example.transfers.application.AccountConflictException;
+import com.example.transfers.application.TransferIdInUseException;
 import com.example.transfers.config.TransferProperties;
 import com.example.transfers.domain.IllegalTransferStateException;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -14,8 +15,8 @@ import org.springframework.kafka.listener.CommonErrorHandler;
 
 /**
  * Error handling (ADR 0007): unparseable or invalid messages, answers contradicting a transfer's
- * state, and an account id claimed twice with different details are dead-lettered; everything else
- * is retried.
+ * state, a transfer id requested again for a different transfer, and an account id claimed twice with
+ * different details are dead-lettered; everything else is retried.
  */
 @Configuration
 class KafkaConfig {
@@ -26,7 +27,8 @@ class KafkaConfig {
         var topics = properties.topics();
         return DeadLetters.errorHandler(template, registry,
                 List.of(topics.transferRequests(), topics.savingsEvents(), topics.currentAccountEvents()),
-                List.of(IllegalTransferStateException.class, AccountConflictException.class));
+                List.of(IllegalTransferStateException.class, AccountConflictException.class,
+                        TransferIdInUseException.class));
     }
 
     /**

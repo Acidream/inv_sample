@@ -1,6 +1,6 @@
 # 0017 – Savings products: versioned terms from a catalogue
 
-Date: 2026-11-23 · Status: Accepted; opening accounts amended by [0020](0020-open-and-fund-a-savings-product.md)
+Date: 2026-11-23 · Status: Accepted; opening accounts amended by [0020](0020-open-and-fund-a-savings-product.md); taking a product off sale dated by [0024](0024-outcomes-checked-against-own-records.md)
 
 ## Context
 
@@ -20,7 +20,7 @@ combination of terms, not a new class.
 **Versions are immutable.** A published version never changes; a database trigger refuses updates
 and deletes. New terms are a new version with a `valid_from`, so a rate change can be published
 ahead of the day it takes effect. The *current* version of a product is the one with the latest
-`valid_from` that has passed. A product can be taken off sale (`on_sale = false`), which stops new
+`valid_from` that has passed. A product can be taken off sale (from a dated `off_sale_from`, ADR 0024), which stops new
 accounts and changes nothing for existing ones.
 
 **An account keeps the version it was opened on, for life.** `account` stores

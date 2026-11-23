@@ -126,32 +126,32 @@ public final class Transfer {
     }
 
     /** The source's ledger debited it: credit the target. */
-    public Step debited(Ledger by) {
+    public Step debited(Ledger by, UUID account) {
         require(Status.DEBITING, "be debited");
-        requireLedger(by, sourceLedger(), "debited");
+        requireAnswerer(by, account, sourceLedger(), request.fromAccountId(), "debited");
         status = Status.CREDITING;
         return route == Route.CURRENT_TO_SAVINGS
                 ? new Step.CreditSavings(request.toAccountId(), request.transferId(), request.amount())
                 : new Step.CreditCurrentAccount(request.toAccountId(), request.transferId(), request.amount());
     }
 
-    public Step debitRejected(Ledger by, String detail) {
+    public Step debitRejected(Ledger by, UUID account, String detail) {
         require(Status.DEBITING, "have its debit rejected");
-        requireLedger(by, sourceLedger(), "rejected the debit of");
+        requireAnswerer(by, account, sourceLedger(), request.fromAccountId(), "rejected the debit of");
         return fail(FailureReason.DEBIT_REJECTED, detail);
     }
 
-    public Step credited(Ledger by) {
+    public Step credited(Ledger by, UUID account) {
         require(Status.CREDITING, "be credited");
-        requireLedger(by, targetLedger(), "credited");
+        requireAnswerer(by, account, targetLedger(), request.toAccountId(), "credited");
         status = Status.COMPLETED;
         return new Step.Completed(request.transferId());
     }
 
     /** The target refused the money: give it back to the source (compensation). */
-    public Step creditRefused(Ledger by, String detail) {
+    public Step creditRefused(Ledger by, UUID account, String detail) {
         require(Status.CREDITING, "have its credit refused");
-        requireLedger(by, targetLedger(), "refused the credit of");
+        requireAnswerer(by, account, targetLedger(), request.toAccountId(), "refused the credit of");
         if (route != Route.SAVINGS_TO_CURRENT) {
             throw new IllegalTransferStateException("Savings never refuses a credit; transfer "
                     + request.transferId());
@@ -162,9 +162,9 @@ public final class Transfer {
     }
 
     /** Savings credited the refused money back: the transfer failed, and no money moved. */
-    public Step returned(Ledger by) {
+    public Step returned(Ledger by, UUID account) {
         require(Status.RETURNING, "be returned");
-        requireLedger(by, Ledger.SAVINGS, "returned");
+        requireAnswerer(by, account, Ledger.SAVINGS, request.fromAccountId(), "returned");
         return fail(FailureReason.CREDIT_REFUSED, failureDetail);
     }
 
@@ -190,10 +190,18 @@ public final class Transfer {
         }
     }
 
-    private void requireLedger(Ledger by, Ledger expected, String what) {
-        if (by != expected) {
+    /**
+     * An answer counts only from the ledger and the account the instruction went to: a transfer id is
+     * the requester's choice, so the same id answered for another account is not this transfer's answer.
+     */
+    private void requireAnswerer(Ledger by, UUID account, Ledger expectedLedger, UUID expectedAccount, String what) {
+        if (by != expectedLedger) {
             throw new IllegalTransferStateException(by + " " + what + " transfer " + request.transferId()
-                    + ", but that is " + expected + "'s part");
+                    + ", but that is " + expectedLedger + "'s part");
+        }
+        if (!expectedAccount.equals(account)) {
+            throw new IllegalTransferStateException("Account " + account + " " + what + " transfer "
+                    + request.transferId() + ", but that is account " + expectedAccount + "'s part");
         }
     }
 

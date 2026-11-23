@@ -18,6 +18,7 @@ import com.google.protobuf.util.JsonFormat;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -53,7 +54,7 @@ public final class TestHooks {
      */
     public static String product(Object annualRate, String payoutFrequency) {
         var code = "TEST_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase();
-        jdbc().sql("insert into savings_product (code, name, on_sale) values (:code, :name, true)")
+        jdbc().sql("insert into savings_product (code, name) values (:code, :name)")
                 .param("code", code)
                 .param("name", "Test product " + code)
                 .update();
@@ -75,9 +76,17 @@ public final class TestHooks {
                 .update();
     }
 
-    /** Takes a product off sale: no new accounts, existing ones keep their terms. */
+    /** Takes a product off sale now (the service's clock): no new accounts, existing ones keep their terms. */
     public static void stopSelling(String code) {
-        jdbc().sql("update savings_product set on_sale = false where code = :code").param("code", code).update();
+        stopSellingFrom(code, context.getBean(MutableClock.class).instant().toString());
+    }
+
+    /** Takes a product off sale from {@code offSaleFrom} (ISO instant), as a migration would. */
+    public static void stopSellingFrom(String code, String offSaleFrom) {
+        jdbc().sql("update savings_product set off_sale_from = :from where code = :code")
+                .param("from", Instant.parse(offSaleFrom).atOffset(ZoneOffset.UTC))
+                .param("code", code)
+                .update();
     }
 
     // --- time and jobs ----------------------------------------------------------------------------
@@ -198,9 +207,12 @@ public final class TestHooks {
                 .toList();
     }
 
-    /** Waits until the instruction with this account key was dead-lettered; returns the DLT exception class. */
-    public static String awaitDeadLetter(String accountId) {
-        var record = kafka().awaitDeadLetter(accountId);
+    /**
+     * Waits until a message with this key was dead-lettered (an instruction: its account id; a transfer
+     * event: its transfer id); returns the DLT exception class.
+     */
+    public static String awaitDeadLetter(String key) {
+        var record = kafka().awaitDeadLetter(key);
         var header = record.headers().lastHeader("kafka_dlt-exception-cause-fqcn");
         return header == null ? "" : new String(header.value(), java.nio.charset.StandardCharsets.UTF_8);
     }

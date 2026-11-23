@@ -42,4 +42,4 @@ records are 8 to 10 years). Reads are always "one account, newest first" or "one
 - Queries without a time bound touch every partition's index. Acceptable for per-account lookups,
   which only scan a few index entries in each partition.
 - The same treatment would apply to `interest_accrual` (one row per account per day) and
-  `processed_event` once volumes justify it.
+  `processed_message` once volumes justify it.

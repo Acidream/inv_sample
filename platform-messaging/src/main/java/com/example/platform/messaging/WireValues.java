@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 
 /**
  * Checks for values read from a message, for each service's anti-corruption layer (ADR 0005). A
- * value that fails throws {@link IllegalArgumentException}, which {@link DeadLetters} parks on the
+ * value that fails throws {@link InvalidMessageException}, which {@link DeadLetters} parks on the
  * dead-letter topic, including values the database would refuse (too long, NUL characters, amounts
  * too large for {@code numeric(19, 2)}). Which values are valid for the business (currency, sign)
  * stays with the service.
@@ -25,7 +25,7 @@ public final class WireValues {
     /** @return the value, if not blank */
     public static String required(String value, String field) {
         if (value.isBlank()) {
-            throw new IllegalArgumentException("Missing " + field);
+            throw new InvalidMessageException("Missing " + field);
         }
         return value;
     }
@@ -34,10 +34,10 @@ public final class WireValues {
     public static String id(String value, String field, int maxLength) {
         required(value, field);
         if (value.codePointCount(0, value.length()) > maxLength) {
-            throw new IllegalArgumentException(field + " longer than " + maxLength + " characters");
+            throw new InvalidMessageException(field + " longer than " + maxLength + " characters");
         }
         if (value.indexOf('\u0000') >= 0) {
-            throw new IllegalArgumentException(field + " contains a NUL character");
+            throw new InvalidMessageException(field + " contains a NUL character");
         }
         return value;
     }
@@ -51,18 +51,24 @@ public final class WireValues {
     }
 
     public static UUID uuid(String value, String field) {
-        return UUID.fromString(required(value, field));
+        try {
+            return UUID.fromString(required(value, field));
+        } catch (InvalidMessageException e) {
+            throw e;
+        } catch (IllegalArgumentException e) {
+            throw new InvalidMessageException(field + " is not a UUID: " + value, e);
+        }
     }
 
     /** A non-negative amount written as a plain decimal with at most two fraction digits, e.g. "250.00". */
     public static BigDecimal plainAmount(String raw) {
         if (!PLAIN_DECIMAL.matcher(raw).matches()) {
-            throw new IllegalArgumentException("Amount must be a plain decimal with at most two fraction digits: "
+            throw new InvalidMessageException("Amount must be a plain decimal with at most two fraction digits: "
                     + raw);
         }
         var amount = new BigDecimal(raw);
         if (amount.precision() - amount.scale() > MAX_INTEGER_DIGITS) {
-            throw new IllegalArgumentException("Amount too large: " + raw);
+            throw new InvalidMessageException("Amount too large: " + raw);
         }
         return amount;
     }
@@ -70,7 +76,7 @@ public final class WireValues {
     /** @param timestamp null if the message doesn't have it */
     public static Instant instant(Timestamp timestamp, String field) {
         if (timestamp == null) {
-            throw new IllegalArgumentException("Missing " + field);
+            throw new InvalidMessageException("Missing " + field);
         }
         return Instant.ofEpochSecond(timestamp.getSeconds(), timestamp.getNanos());
     }

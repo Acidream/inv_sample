@@ -58,12 +58,14 @@ public class CurrentAccountService {
     }
 
     // --- intake: accepts into the command log, changes nothing (ADR 0019) -------------------------
+    // Deliberately not transactional: each lookup is one statement, and the Kafka send may wait seconds
+    // for its acknowledgement. Inside a transaction it would hold a database connection all that time,
+    // and a slow Kafka would take every connection the consumers and the outbox need.
 
     /**
      * @return the account if it was already opened, empty if the command was just appended
      * @throws AccountIdInUseException if the id belongs to an account opened with different details
      */
-    @Transactional(readOnly = true)
     public Optional<CurrentAccount> submit(Command.Open open) {
         var existing = accounts.find(open.accountId());
         if (existing.isPresent()) {
@@ -80,7 +82,6 @@ public class CurrentAccountService {
      * @return the payment if it was already applied, empty if the command was just appended
      * @throws PaymentIdInUseException if the id belongs to a different payment
      */
-    @Transactional(readOnly = true)
     public Optional<IncomingPayment> submit(Command.ReceivePayment payment) {
         var existing = payments.find(payment.paymentId());
         if (existing.isPresent()) {
@@ -94,13 +95,11 @@ public class CurrentAccountService {
     }
 
     /** @throws UnknownAccountException if the account isn't open (yet) */
-    @Transactional(readOnly = true)
     public void submit(Command.Block block) {
         appendForExistingAccount(block);
     }
 
     /** @throws UnknownAccountException if the account isn't open (yet) */
-    @Transactional(readOnly = true)
     public void submit(Command.Unblock unblock) {
         appendForExistingAccount(unblock);
     }
@@ -149,8 +148,7 @@ public class CurrentAccountService {
         var earlier = payments.find(command.paymentId());
         if (earlier.isPresent()) {
             if (!earlier.get().samePaymentAs(command.accountId(), command.amount())) {
-                throw new IllegalArgumentException("Payment " + command.paymentId()
-                        + " was already received with different details");
+                throw new PaymentIdInUseException(command.paymentId());
             }
             log.info("Payment {} was already received; skipping", command.paymentId());
             return;
@@ -195,7 +193,7 @@ public class CurrentAccountService {
         var earlier = answers.find(instruction.accountId(), instruction.transferId());
         if (earlier.isPresent()) {
             if (!earlier.get().answers(instruction.direction(), instruction.amount())) {
-                throw new IllegalArgumentException("Transfer " + instruction.transferId() + " was already answered as "
+                throw new TransferIdInUseException("Transfer " + instruction.transferId() + " was already answered as "
                         + earlier.get().direction() + " " + earlier.get().amount() + " for account "
                         + instruction.accountId() + "; message " + instruction.messageId());
             }

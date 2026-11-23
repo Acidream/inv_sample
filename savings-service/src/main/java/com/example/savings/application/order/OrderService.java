@@ -8,6 +8,7 @@ import com.example.savings.application.port.Orders;
 import com.example.savings.application.port.ProcessedEvents;
 import com.example.savings.application.port.Products;
 import com.example.savings.application.port.TransferRequests;
+import com.example.savings.application.port.Transfers;
 import com.example.savings.application.port.TransferRequests.TransferRequest;
 import com.example.savings.domain.Account;
 import com.example.savings.domain.AccountEvent.AccountOpened;
@@ -34,18 +35,20 @@ public class OrderService {
     private final Accounts accounts;
     private final AccountEventPublisher events;
     private final TransferRequests transferRequests;
+    private final Transfers transfers;
     private final ProcessedEvents processedEvents;
     private final CommandLog commandLog;
     private final SavingsPolicy policy;
 
     public OrderService(Orders orders, Products products, Accounts accounts, AccountEventPublisher events,
-            TransferRequests transferRequests, ProcessedEvents processedEvents, CommandLog commandLog,
-            SavingsPolicy policy) {
+            TransferRequests transferRequests, Transfers transfers, ProcessedEvents processedEvents,
+            CommandLog commandLog, SavingsPolicy policy) {
         this.orders = orders;
         this.products = products;
         this.accounts = accounts;
         this.events = events;
         this.transferRequests = transferRequests;
+        this.transfers = transfers;
         this.processedEvents = processedEvents;
         this.commandLog = commandLog;
         this.policy = policy;
@@ -55,10 +58,13 @@ public class OrderService {
      * Accepts an order into the command log; changes no state (ADR 0019). An order id that was already
      * applied returns that order: the same order again is a retry, a different one is refused.
      *
+     * <p>Deliberately not transactional: the lookup is one statement, and the Kafka send may wait
+     * seconds for its acknowledgement. Inside a transaction it would hold a database connection all
+     * that time, and a slow Kafka would take every connection the consumers and the outbox need.
+     *
      * @return the order as applied, or empty if it was just appended and not yet applied
      * @throws OrderIdInUseException if the id belongs to a different order
      */
-    @Transactional(readOnly = true)
     public Optional<Order> submit(Order.Request request) {
         var applied = orders.find(request.orderId());
         if (applied.isPresent()) {
@@ -105,14 +111,17 @@ public class OrderService {
         orders.add(order);
     }
 
-    /** The funding transfer completed. Transfers savings didn't ask for are not its business. */
+    /**
+     * The funding transfer completed. Transfers savings didn't ask for are not its business. The order
+     * checks the report against the deposit savings booked (see {@link Order#funded}).
+     */
     @Transactional
     public void transferCompleted(String eventId, String transferId) {
         if (!processedEvents.markProcessed("transfer-event:" + eventId)) {
             return;
         }
         orders.findByTransferId(transferId).ifPresent(order -> {
-            order.funded();
+            order.funded(transfers.find(transferId));
             orders.update(order);
         });
     }
@@ -123,7 +132,7 @@ public class OrderService {
             return;
         }
         orders.findByTransferId(transferId).ifPresent(order -> {
-            order.fundingFailed(reason);
+            order.fundingFailed(reason, transfers.find(transferId));
             orders.update(order);
         });
     }

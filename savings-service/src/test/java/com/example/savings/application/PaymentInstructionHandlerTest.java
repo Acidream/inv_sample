@@ -1,7 +1,6 @@
 package com.example.savings.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
@@ -107,9 +106,9 @@ class PaymentInstructionHandlerTest {
         when(transfers.find("t1")).thenReturn(Optional.of(Transfer.deposited("t1", account.id(), Money.of("10.00"),
                 NOW)));
 
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> handler.handle(new TransferOut("e2", account.id(), "t1", Money.of("10.00"))))
-                .withMessageContaining("t1");
+        assertThatThrownBy(() -> handler.handle(new TransferOut("e2", account.id(), "t1", Money.of("10.00"))))
+                .isInstanceOf(IllegalTransferException.class)
+                .hasMessageContaining("t1");
         verifyNoInteractions(bookkeeping, events);
     }
 
@@ -151,7 +150,7 @@ class PaymentInstructionHandlerTest {
         when(transfers.find("t1")).thenReturn(Optional.of(Transfer.withdrawn("t1", UUID.randomUUID(),
                 Money.of("40.00"), NOW)));
 
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> handler.handle(new ReturnTransfer("e3", account.id(), "t1")));
+        assertThatThrownBy(() -> handler.handle(new ReturnTransfer("e3", account.id(), "t1")))
+                .isInstanceOf(IllegalTransferException.class);
     }
 }

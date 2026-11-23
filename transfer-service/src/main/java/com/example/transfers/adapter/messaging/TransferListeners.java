@@ -54,11 +54,15 @@ class TransferListeners {
             case ACCOUNT_OPENED -> transfers.accountOpened(id, new KnownAccount(
                     uuid(event.getAccountId(), "account_id"),
                     uuid(event.getAccountOpened().getCustomerId(), "customer_id"), Ledger.SAVINGS));
-            case MONEY_DEPOSITED -> savings(id, event.getMoneyDeposited().getTransferId(), Kind.CREDITED, "");
-            case MONEY_WITHDRAWN -> savings(id, event.getMoneyWithdrawn().getTransferId(), Kind.DEBITED, "");
-            case WITHDRAWAL_REJECTED -> savings(id, event.getWithdrawalRejected().getTransferId(), Kind.DEBIT_REJECTED,
+            case MONEY_DEPOSITED -> savings(id, event.getAccountId(), event.getMoneyDeposited().getTransferId(),
+                    Kind.CREDITED, "");
+            case MONEY_WITHDRAWN -> savings(id, event.getAccountId(), event.getMoneyWithdrawn().getTransferId(),
+                    Kind.DEBITED, "");
+            case WITHDRAWAL_REJECTED -> savings(id, event.getAccountId(),
+                    event.getWithdrawalRejected().getTransferId(), Kind.DEBIT_REJECTED,
                     event.getWithdrawalRejected().getReason().name());
-            case WITHDRAWAL_RETURNED -> savings(id, event.getWithdrawalReturned().getTransferId(), Kind.RETURNED, "");
+            case WITHDRAWAL_RETURNED -> savings(id, event.getAccountId(),
+                    event.getWithdrawalReturned().getTransferId(), Kind.RETURNED, "");
             default -> log.debug("Ignoring savings event {} ({}): not a transfer's business", id,
                     event.getPayloadCase());
         }
@@ -72,25 +76,26 @@ class TransferListeners {
             case CURRENT_ACCOUNT_OPENED -> transfers.accountOpened(id, new KnownAccount(
                     uuid(event.getAccountId(), "account_id"),
                     uuid(event.getCurrentAccountOpened().getCustomerId(), "customer_id"), Ledger.CURRENT_ACCOUNT));
-            case CURRENT_ACCOUNT_DEBITED -> currentAccount(id, event.getCurrentAccountDebited().getTransferId(),
-                    Kind.DEBITED, "");
-            case DEBIT_REJECTED -> currentAccount(id, event.getDebitRejected().getTransferId(), Kind.DEBIT_REJECTED,
-                    event.getDebitRejected().getReason());
-            case CURRENT_ACCOUNT_CREDITED -> currentAccount(id, event.getCurrentAccountCredited().getTransferId(),
-                    Kind.CREDITED, "");
-            case CREDIT_REJECTED -> currentAccount(id, event.getCreditRejected().getTransferId(), Kind.CREDIT_REFUSED,
-                    event.getCreditRejected().getReason());
+            case CURRENT_ACCOUNT_DEBITED -> currentAccount(id, event.getAccountId(),
+                    event.getCurrentAccountDebited().getTransferId(), Kind.DEBITED, "");
+            case DEBIT_REJECTED -> currentAccount(id, event.getAccountId(), event.getDebitRejected().getTransferId(),
+                    Kind.DEBIT_REJECTED, event.getDebitRejected().getReason());
+            case CURRENT_ACCOUNT_CREDITED -> currentAccount(id, event.getAccountId(),
+                    event.getCurrentAccountCredited().getTransferId(), Kind.CREDITED, "");
+            case CREDIT_REJECTED -> currentAccount(id, event.getAccountId(), event.getCreditRejected().getTransferId(),
+                    Kind.CREDIT_REFUSED, event.getCreditRejected().getReason());
             default -> log.debug("Ignoring current account event {} ({}): not a transfer's business", id,
                     event.getPayloadCase());
         }
     }
 
-    private void savings(String messageId, String transferId, Kind kind, String detail) {
-        transfers.outcome(new LedgerOutcome(messageId, Ledger.SAVINGS, transferId(transferId), kind, detail(detail)));
+    private void savings(String messageId, String accountId, String transferId, Kind kind, String detail) {
+        transfers.outcome(new LedgerOutcome(messageId, Ledger.SAVINGS, uuid(accountId, "account_id"),
+                transferId(transferId), kind, detail(detail)));
     }
 
-    private void currentAccount(String messageId, String transferId, Kind kind, String detail) {
-        transfers.outcome(new LedgerOutcome(messageId, Ledger.CURRENT_ACCOUNT, transferId(transferId), kind,
-                detail(detail)));
+    private void currentAccount(String messageId, String accountId, String transferId, Kind kind, String detail) {
+        transfers.outcome(new LedgerOutcome(messageId, Ledger.CURRENT_ACCOUNT, uuid(accountId, "account_id"),
+                transferId(transferId), kind, detail(detail)));
     }
 }

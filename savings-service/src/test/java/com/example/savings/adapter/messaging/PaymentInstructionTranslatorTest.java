@@ -1,12 +1,13 @@
 package com.example.savings.adapter.messaging;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 import com.example.events.common.v1.Money;
 import com.example.events.payments.v1.PaymentInstruction;
 import com.example.events.payments.v1.TransferFromCurrentAccount;
 import com.example.events.payments.v1.TransferReturned;
+import com.example.platform.messaging.InvalidMessageException;
 import com.example.savings.application.PaymentInstruction.TransferIn;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -37,7 +38,7 @@ class PaymentInstructionTranslatorTest {
     void rejectsAnEventIdLongerThanTheColumn() {
         var tooLong = "x".repeat(PaymentInstructionTranslator.MAX_ID_LENGTH + 1);
 
-        assertThatIllegalArgumentException()
+        assertThatExceptionOfType(InvalidMessageException.class)
                 .isThrownBy(() -> PaymentInstructionTranslator.translate(deposit(tooLong, "tr-1", "1.00")))
                 .withMessageContaining("event_id");
     }
@@ -46,10 +47,10 @@ class PaymentInstructionTranslatorTest {
     void rejectsATransferIdLongerThanTheColumn() {
         var tooLong = "x".repeat(PaymentInstructionTranslator.MAX_ID_LENGTH + 1);
 
-        assertThatIllegalArgumentException()
+        assertThatExceptionOfType(InvalidMessageException.class)
                 .isThrownBy(() -> PaymentInstructionTranslator.translate(deposit("e-1", tooLong, "1.00")))
                 .withMessageContaining("transfer_id");
-        assertThatIllegalArgumentException()
+        assertThatExceptionOfType(InvalidMessageException.class)
                 .isThrownBy(() -> PaymentInstructionTranslator.translate(envelope("e-1")
                         .setTransferReturned(TransferReturned.newBuilder().setTransferId(tooLong)).build()))
                 .withMessageContaining("transfer_id");
@@ -57,7 +58,7 @@ class PaymentInstructionTranslatorTest {
 
     @Test
     void rejectsANulCharacterInAnId() {
-        assertThatIllegalArgumentException()
+        assertThatExceptionOfType(InvalidMessageException.class)
                 .isThrownBy(() -> PaymentInstructionTranslator.translate(deposit("e-1", "tr\u00001", "1.00")))
                 .withMessageContaining("NUL");
     }
@@ -74,7 +75,7 @@ class PaymentInstructionTranslatorTest {
         "0.00"                       // not positive
     })
     void rejectsAmountsThatAreNotPlainPositiveCentAmountsThatFit(String amount) {
-        assertThatIllegalArgumentException()
+        assertThatExceptionOfType(InvalidMessageException.class)
                 .isThrownBy(() -> PaymentInstructionTranslator.translate(deposit("e-1", "tr-1", amount)));
     }
 

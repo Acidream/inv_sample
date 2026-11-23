@@ -109,7 +109,7 @@ Feature: Answering the transfer service's instructions (ADR 0018, 0021)
     * def answer = hooks.awaitEvent(accountId)
     * hooks.debit(accountId, transferId, '31.00')
     * def cause = hooks.awaitDeadLetter('payments.current-account-instructions.v1', accountId)
-    * match cause == 'java.lang.IllegalArgumentException'
+    * match cause == 'com.example.currentaccount.application.TransferIdInUseException'
     Given path 'current-accounts', accountId
     When method get
     Then match response.balance == '70.00'

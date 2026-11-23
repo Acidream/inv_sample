@@ -25,6 +25,35 @@ Feature: Savings products and their versions
     When method get
     Then match response.items[*].code !contains productCode
 
+  Scenario: an order is decided as of when it was placed, also when the product went off sale since
+    * hooks.setClock('2026-05-10T09:00:00Z')
+    * def productCode = hooks.product(0.02, 'MONTHLY')
+    * hooks.stopSellingFrom(productCode, '2026-05-10T12:00:00Z')
+
+    * def before = hooks.uuid()
+    Given path 'orders', before
+    And request { customerId: '#(hooks.uuid())', productCode: '#(productCode)', productVersion: 1, amount: '10.00', fromAccountId: '#(hooks.uuid())' }
+    When method put
+    Then status 202
+    Given path 'orders', before
+    And retry until responseStatus == 200
+    When method get
+    Then match response.status == 'FUNDING'
+
+    * hooks.setClock('2026-05-10T12:00:00Z')
+    * def after = hooks.uuid()
+    Given path 'orders', after
+    And request { customerId: '#(hooks.uuid())', productCode: '#(productCode)', productVersion: 1, amount: '10.00', fromAccountId: '#(hooks.uuid())' }
+    When method put
+    Then status 202
+    Given path 'orders', after
+    And retry until responseStatus == 200
+    When method get
+    Then match response contains { status: 'REJECTED', rejectionReason: 'PRODUCT_NOT_ON_SALE' }
+    Given path 'products'
+    When method get
+    Then match response.items[*].code !contains productCode
+
   Scenario: a new version applies to orders placed from the day it takes effect; earlier accounts keep theirs
     * hooks.setClock('2026-03-15T09:00:00Z')
     * def productCode = hooks.product(0.02, 'MONTHLY')

@@ -1,6 +1,6 @@
 # 0020 – Opening a savings product: one order that opens the account, then asks for the money
 
-Date: 2026-11-23 · Status: Accepted
+Date: 2026-11-23 · Status: Accepted · Outcomes checked against savings' own deposit, `savings-` transfer ids reserved: [0024](0024-outcomes-checked-against-own-records.md)
 
 ## Context
 

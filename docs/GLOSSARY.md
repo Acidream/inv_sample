@@ -5,7 +5,7 @@ Terms as they are used in code, events and docs. If code and glossary disagree, 
 | Term | Meaning | In code |
 |---|---|---|
 | **Account** | A customer's EUR savings account, opened on one product version whose terms it keeps. The aggregate that guards every balance change. | `domain.Account` |
-| **Product** | What a customer opens, e.g. `INSTANT_ACCESS`. Its terms live in versions; it can be taken off sale. | `savings_product`, `GET /products` |
+| **Product** | What a customer opens, e.g. `INSTANT_ACCESS`. Its terms live in versions; it can be taken off sale from a given time. | `savings_product`, `GET /products` |
 | **Product version** | One immutable set of terms of a product: annual rate and payout frequency, valid from a point in time. The current version is the latest one whose `valid_from` has passed. | `domain.SavingsProduct`, `savings_product_version` |
 | **Payout frequency** | How often a product credits interest: MONTHLY, QUARTERLY or YEARLY, in calendar periods. | `domain.PayoutFrequency` |
 | **Balance** | Money on the account according to the ledger. Never negative: the account and the database refuse it. | `Account.balance()` |
@@ -45,4 +45,4 @@ Terms as they are used in code, events and docs. If code and glossary disagree, 
 | **Processed message** | Id of an incoming message that has already been applied; makes the consumer idempotent. Shared by all services. | `platform-messaging` `ProcessedMessages`, `processed_message` |
 | **platform-messaging** | The technical library all services use: outbox and relay, idempotent consumer, retention, dead letters, wire checks. No domain rules. | `com.example.platform.messaging` |
 | **Dead-letter topic (DLT)** | `<topic>.DLT`. Where messages go that can never be processed (malformed, contract violation). | `KafkaConfig` |
-| **Contract violation** | An instruction that contradicts earlier ones, e.g. returning a rejected withdrawal or reusing a transfer id. Never silently ignored. | `IllegalTransferException`, `IllegalArgumentException` |
+| **Contract violation** | An instruction that contradicts earlier ones, e.g. returning a rejected withdrawal or reusing a transfer id. Never silently ignored. | `IllegalTransferException`, `IllegalOrderTransitionException`, `IllegalTransferStateException`, `TransferIdInUseException` |

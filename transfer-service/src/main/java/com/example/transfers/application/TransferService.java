@@ -44,12 +44,13 @@ public class TransferService {
     }
 
     /**
-     * Accepts a request into the command log; changes no state (ADR 0019).
+     * Accepts a request into the command log; changes no state (ADR 0019). Deliberately not
+     * transactional: the Kafka send may wait seconds for its acknowledgement, and inside a transaction
+     * it would hold a database connection all that time.
      *
      * @return the transfer if it was already applied, empty if it was just appended
      * @throws TransferIdInUseException if the id belongs to a different transfer
      */
-    @Transactional(readOnly = true)
     public Optional<Transfer> submit(Transfer.Request request) {
         var applied = transfers.find(request.transferId());
         if (applied.isPresent()) {
@@ -75,8 +76,7 @@ public class TransferService {
         var earlier = transfers.find(request.transferId());
         if (earlier.isPresent()) {
             if (!earlier.get().request().sameTransferAs(request)) {
-                throw new IllegalArgumentException("Transfer " + request.transferId()
-                        + " was already requested with different details; message " + messageId);
+                throw new TransferIdInUseException(request.transferId());
             }
             log.info("Transfer {} was already requested; skipping message {}", request.transferId(), messageId);
             return;
@@ -128,11 +128,11 @@ public class TransferService {
         }
         var transfer = found.get();
         var step = switch (outcome.kind()) {
-            case DEBITED -> transfer.debited(outcome.ledger());
-            case DEBIT_REJECTED -> transfer.debitRejected(outcome.ledger(), outcome.detail());
-            case CREDITED -> transfer.credited(outcome.ledger());
-            case CREDIT_REFUSED -> transfer.creditRefused(outcome.ledger(), outcome.detail());
-            case RETURNED -> transfer.returned(outcome.ledger());
+            case DEBITED -> transfer.debited(outcome.ledger(), outcome.accountId());
+            case DEBIT_REJECTED -> transfer.debitRejected(outcome.ledger(), outcome.accountId(), outcome.detail());
+            case CREDITED -> transfer.credited(outcome.ledger(), outcome.accountId());
+            case CREDIT_REFUSED -> transfer.creditRefused(outcome.ledger(), outcome.accountId(), outcome.detail());
+            case RETURNED -> transfer.returned(outcome.ledger(), outcome.accountId());
         };
         transfers.update(transfer);
         execute(step);
