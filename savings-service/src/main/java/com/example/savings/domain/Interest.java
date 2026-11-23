@@ -16,7 +16,7 @@ public final class Interest {
     private Interest() {
     }
 
-    /** Interest earned for one day on the given end-of-day balance. Negative balances earn nothing. */
+    /** Interest earned for one day on the given end-of-day balance. A zero balance earns nothing. */
     public static BigDecimal forOneDay(Money endOfDayBalance, BigDecimal annualRate) {
         if (!endOfDayBalance.isPositive()) {
             return BigDecimal.ZERO.setScale(ACCRUAL_SCALE);

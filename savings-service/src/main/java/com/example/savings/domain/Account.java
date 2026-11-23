@@ -129,11 +129,12 @@ public final class Account {
     }
 
     /**
-     * Credits accrued interest rounded to cents. The sub-cent remainder stays accrued and is paid
-     * with a later period, so no fraction of a cent is ever lost or invented.
+     * Credits accrued interest rounded down to whole cents. The sub-cent remainder (0 to 0.0099...)
+     * stays accrued and is paid with a later period, so no fraction of a cent is ever lost or invented,
+     * and none is paid before it has been earned: accrued interest never goes negative.
      */
     public Optional<LedgerEntry> payOutInterest(YearMonth period, Instant now) {
-        var payout = Money.roundedFrom(accruedInterest);
+        var payout = Money.roundedDown(accruedInterest);
         if (!payout.isPositive()) {
             return Optional.empty();
         }

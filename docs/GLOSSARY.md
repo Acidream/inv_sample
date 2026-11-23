@@ -21,7 +21,7 @@ Terms as they are used in code, events and docs. If code and glossary disagree, 
 | **End-of-day balance** | Balance after the last ledger entry booked before midnight (Berlin) of that day. Interest is based on it. | `Ledger.balanceAt` |
 | **Accrual** | Interest earned for one day, ACT/365: `end-of-day balance × rate ÷ 365`, 10 fraction digits, never negative. | `Interest.forOneDay`, `interest_accrual` |
 | **Accrued interest** | Sum of accruals not yet paid out. Sub-cent precision. | `Account.accruedInterest` |
-| **Payout** | Monthly credit of accrued interest, rounded half-even to cents. The rounding remainder stays accrued. | `Account.payOutInterest` |
+| **Payout** | Monthly credit of accrued interest, rounded down to cents. The rounding remainder (under a cent) stays accrued. | `Account.payOutInterest` |
 | **Period** | The calendar month (`YYYY-MM`) a payout belongs to. | `InterestPaid.period` |
 | **Account event** | A fact Savings publishes for others: AccountOpened, MoneyDeposited, MoneyWithdrawn, WithdrawalRejected, WithdrawalReturned, InterestPaid. Every instruction gets exactly one. | `domain.AccountEvent`, `savings.v1.AccountEvent` |
 | **Posting** | The bank-wide, double-entry view of a booking: lines whose debits equal their credits, published to Finance. Every ledger entry and every accrual has one; a rejected withdrawal doesn't. | `domain.Posting`, `savings.v1.Posting` |

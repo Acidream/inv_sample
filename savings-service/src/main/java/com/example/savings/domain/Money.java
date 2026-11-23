@@ -5,7 +5,8 @@ import java.math.RoundingMode;
 import java.util.Objects;
 
 /**
- * An amount of euros with cent precision. Immutable, may be negative (an overdrawn balance).
+ * An amount of euros with cent precision. Immutable. May be negative: a ledger entry's amount is
+ * signed, so a debit is a negative amount (balances themselves never go negative, ADR 0015).
  * Only EUR exists in this service, so the currency is implicit.
  */
 public record Money(BigDecimal amount) implements Comparable<Money> {
@@ -26,9 +27,12 @@ public record Money(BigDecimal amount) implements Comparable<Money> {
         return new Money(new BigDecimal(amount));
     }
 
-    /** Rounds a high-precision amount (e.g. accrued interest) to cents, banker's rounding. */
-    public static Money roundedFrom(BigDecimal amount) {
-        return new Money(amount.setScale(SCALE, RoundingMode.HALF_EVEN));
+    /**
+     * Rounds a high-precision amount (e.g. accrued interest) down to whole cents, toward zero: an
+     * interest payout never exceeds what has been earned.
+     */
+    public static Money roundedDown(BigDecimal amount) {
+        return new Money(amount.setScale(SCALE, RoundingMode.DOWN));
     }
 
     public Money plus(Money other) {

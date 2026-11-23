@@ -37,7 +37,7 @@ flowchart LR
   current account then refuses the money, Payments sends a return and Savings credits it back.
   The balance can never go negative.
 - **Interest**: ACT/365 on each day's closing balance, accrued nightly with sub-cent precision,
-  credited monthly rounded half-even, with the remainder carried over.
+  credited monthly rounded down to the cent, with the remainder carried over.
 - **Bookkeeping for Finance**: every booking and every daily accrual is also published as a balanced
   double-entry posting (customer, transfer clearing, interest expense, interest payable), so the
   bank's general ledger can be kept and reconciled from it.
@@ -93,7 +93,7 @@ change the design.
 
 | Concern | How | Read |
 |---|---|---|
-| Exact money | `BigDecimal` value object, strings on the wire, half-even rounding only at payout | [ADR 0004](docs/adr/0004-money-and-append-only-ledger.md) |
+| Exact money | `BigDecimal` value object, strings on the wire, rounding (down) only at payout | [ADR 0004](docs/adr/0004-money-and-append-only-ledger.md) |
 | Auditability | Append-only ledger with `balance_after`; daily accrual rows | [0004](docs/adr/0004-money-and-append-only-ledger.md), [0010](docs/adr/0010-interest-accrual-and-payout.md) |
 | Books that balance | Every booking published as a double-entry posting, balanced by construction, value-dated | [0014](docs/adr/0014-double-entry-postings-for-finance.md) |
 | No lost or phantom events | Transactional outbox, single ordered relay | [0006](docs/adr/0006-transactional-outbox.md) |

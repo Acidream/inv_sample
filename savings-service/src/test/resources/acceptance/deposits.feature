@@ -54,6 +54,18 @@ Feature: Deposits arrive from the customer's current account via Kafka
     When method get
     Then match response.balance == '100.00'
 
+  Scenario: a transfer id too long to store is dead-lettered instead of blocking the partition
+    # 101 characters; the column holds 100. Left to the database it would fail on insert, be retried
+    # forever and hold up every later instruction on the partition.
+    * def tooLong = 'tr-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+    * match tooLong.length == 101
+    * hooks.depositTransfer(accountId, tooLong, '100.00')
+    * def cause = hooks.awaitDeadLetter(accountId)
+    * match cause contains 'IllegalArgumentException'
+    * hooks.deposit(accountId, '1.00')
+    * def deposited = hooks.awaitEvent(accountId, 'MONEY_DEPOSITED')
+    * match deposited.balance.amount == '1.00'
+
   Scenario: the statement is paginated newest first with an opaque cursor
     * hooks.deposit(accountId, '10.00')
     * hooks.deposit(accountId, '20.00')

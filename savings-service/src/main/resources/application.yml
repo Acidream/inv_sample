@@ -32,6 +32,9 @@ spring:
       value-deserializer: org.apache.kafka.common.serialization.ByteArrayDeserializer
     listener:
       ack-mode: record
+      # One consumer thread per partition: a message being retried holds up only its own partition,
+      # not every partition this instance was assigned. Extra threads beyond the assigned partitions idle.
+      concurrency: ${savings.topics.partitions}
 
 management:
   endpoints:

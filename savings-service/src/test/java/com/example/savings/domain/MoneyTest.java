@@ -24,15 +24,16 @@ class MoneyTest {
         assertThatIllegalArgumentException().isThrownBy(() -> Money.of(amount));
     }
 
-    @ParameterizedTest(name = "{0} rounds to {1}")
+    @ParameterizedTest(name = "{0} rounds down to {1}")
     @CsvSource({
         "0.0849315060, 0.08",
-        "0.125,        0.12",   // half-even: ties go to the even neighbour
-        "0.135,        0.14",
-        "0.1250000001, 0.13"
+        "0.125,        0.12",
+        "0.135,        0.13",
+        "0.0099999999, 0.00",   // never a cent that hasn't been fully earned
+        "0.1999950000, 0.19"
     })
-    void roundsHalfEvenOnlyWhenAskedTo(String raw, String expected) {
-        assertThat(Money.roundedFrom(new BigDecimal(raw))).isEqualTo(Money.of(expected));
+    void roundsDownOnlyWhenAskedTo(String raw, String expected) {
+        assertThat(Money.roundedDown(new BigDecimal(raw))).isEqualTo(Money.of(expected));
     }
 
     @Test

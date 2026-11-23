@@ -39,7 +39,7 @@ public class Bookkeeping {
         postings.publish(Posting.of(entry, policy.businessZone()));
     }
 
-    /** Days without interest (zero or negative balance) are recorded for the audit trail but not posted. */
+    /** Days without interest (zero balance or zero rate) are recorded for the audit trail but not posted. */
     public void accrue(UUID accountId, LocalDate day, BigDecimal interest) {
         accruals.record(accountId, day, interest);
         if (interest.signum() > 0) {

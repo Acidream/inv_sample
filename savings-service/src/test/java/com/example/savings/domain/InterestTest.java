@@ -14,7 +14,7 @@ class InterestTest {
         "100.00,  0.0100, 0.0027397260",
         "0.01,    0.0250, 0.0000006849",
         "0.00,    0.0250, 0.0000000000",
-        "-50.00,  0.0250, 0.0000000000",   // overdrawn accounts earn nothing (no debit interest either)
+        "-50.00,  0.0250, 0.0000000000",   // cannot happen (ADR 0015); would earn nothing, no debit interest
         "5000.00, 0.0000, 0.0000000000"
     })
     void dailyInterestIsAct365WithTenFractionDigits(String balance, String rate, String expected) {

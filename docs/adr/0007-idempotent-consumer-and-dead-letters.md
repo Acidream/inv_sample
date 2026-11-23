@@ -33,8 +33,13 @@ and must not block the partition behind them.
   **without limit**, backing off exponentially from 500 ms to at most 30 s. A dead letter needs a
   person and leaves money where Payments doesn't expect it, so a database failover of a few seconds
   or minutes must not park every instruction in flight. The price: an error that is wrongly treated
-  as transient blocks its partition. **SavingsConsumerLag** reports that, and the fix is to classify
-  the exception as non-retryable.
+  as transient blocks its partition (one listener thread per partition, so only that one).
+  **SavingsConsumerLag** reports that, and the fix is to classify the exception as non-retryable.
+- So input the database would refuse never reaches it: `PaymentInstructionTranslator` rejects ids
+  longer than their `varchar(100)` columns or containing NUL, and amounts that are not plain decimals
+  fitting `numeric(19, 2)`. Refused only at insert, they would surface as a retried
+  `DataIntegrityViolationException`. That exception as a whole stays retryable, because a duplicate
+  key on `transfer_id` from a concurrent insert is meant to be retried.
 - Non-retryable errors go straight to `<topic>.DLT` with the original bytes and exception headers:
   unparseable Protobuf, validation errors, unknown account or transfer, contract violations such
   as returning a withdrawal that was rejected.

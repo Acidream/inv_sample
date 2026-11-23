@@ -12,8 +12,10 @@ read and check on every withdrawal.
 **Money**
 - `Money` is a value object over `BigDecimal` with exactly 2 fraction digits; constructing it with
   more throws instead of silently rounding. EUR only (ADR 0001).
-- Accrued interest uses 10 fraction digits and is rounded **half-even** (banker's rounding) once, at
-  payout. The remainder is carried, never dropped.
+- Accrued interest uses 10 fraction digits and is rounded **down** to cents once, at payout. The
+  remainder is carried, never dropped. Not half-even: rounding up would pay up to half a cent before
+  it is earned, leaving negative accrued interest on the account (visible in the API) and a debit
+  balance in that customer's share of `interest-payable`.
 - Amounts cross every boundary as decimal **strings**: in Protobuf (`common.v1.Money.amount`) and in
   JSON (`"balance": "100.00"`), because many JSON clients parse numbers as binary floats.
 

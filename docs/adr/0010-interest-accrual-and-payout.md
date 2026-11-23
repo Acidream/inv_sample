@@ -16,8 +16,9 @@ missed or repeated job runs, over a table with potentially millions of accounts.
   (`balance_after` of the last entry before midnight Berlin time), not from the current balance.
 - Accruals are kept with 10 fraction digits in `interest_accrual` (one row per account and day: the
   audit trail, and a primary key that makes double accrual impossible).
-- After the last day of a month is accrued, the accrued amount is **rounded half-even to cents and
-  credited**; the sub-cent remainder stays accrued for the next month.
+- After the last day of a month is accrued, the accrued amount is **rounded down to cents and
+  credited**; the sub-cent remainder stays accrued for the next month. Accrued interest is therefore
+  never negative: nothing is paid before it is earned (ADR 0004).
 
 **Execution** (`InterestAccrualJob`, `InterestService`)
 - Nightly at 00:15 Berlin time, on one instance (ShedLock).

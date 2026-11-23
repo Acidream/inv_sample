@@ -109,22 +109,35 @@ class AccountTest {
     }
 
     @Test
-    void payoutRoundsToCentsAndCarriesTheRemainder() {
+    void payoutRoundsDownToCentsAndCarriesTheRemainder() {
         account.deposit(Money.of("1000.00"), "p1", NOW);
         account.accrueDay(LocalDate.of(2026, 1, 1), Money.of("1000.00"));   // 0.10
         account.accrueDay(LocalDate.of(2026, 1, 2), Money.of("999.95"));    // 0.099995
 
         var entry = account.payOutInterest(YearMonth.of(2026, 1), NOW).orElseThrow();
 
-        assertThat(entry.amount()).isEqualTo(Money.of("0.20"));
+        assertThat(entry.amount()).isEqualTo(Money.of("0.19"));
         assertThat(entry.reference()).isEqualTo("interest:2026-01");
-        assertThat(account.accruedInterest()).isEqualByComparingTo("-0.000005");
+        assertThat(account.accruedInterest()).isEqualByComparingTo("0.009995");
     }
 
     @Test
-    void nothingToPayBelowHalfACent() {
-        account.accrueDay(LocalDate.of(2026, 1, 1), Money.of("1.00"));
+    void nothingIsPaidBeforeAWholeCentIsEarned() {
+        account.accrueDay(LocalDate.of(2026, 1, 1), Money.of("99.00"));    // 0.0099
 
         assertThat(account.payOutInterest(YearMonth.of(2026, 1), NOW)).isEmpty();
+        assertThat(account.accruedInterest()).isEqualByComparingTo("0.0099");
+    }
+
+    @Test
+    void theCarriedRemainderIsPaidOnceItAddsUpToACent() {
+        account.accrueDay(LocalDate.of(2026, 1, 1), Money.of("99.00"));    // 0.0099
+        account.payOutInterest(YearMonth.of(2026, 1), NOW);
+        account.accrueDay(LocalDate.of(2026, 1, 2), Money.of("99.00"));    // + 0.0099 = 0.0198
+
+        var entry = account.payOutInterest(YearMonth.of(2026, 2), NOW).orElseThrow();
+
+        assertThat(entry.amount()).isEqualTo(Money.of("0.01"));
+        assertThat(account.accruedInterest()).isEqualByComparingTo("0.0098");
     }
 }
