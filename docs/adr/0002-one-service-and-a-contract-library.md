@@ -1,6 +1,6 @@
 # 0002 – One service plus a shared contract library
 
-Date: 2026-11-22 · Status: Accepted
+Date: 2026-11-22 · Status: Superseded by [0018](0018-service-structure.md)
 
 ## Context
 

@@ -1,5 +1,6 @@
 package com.example.savings.support;
 
+import com.example.events.payments.v1.TransferRequest;
 import com.example.events.savings.v1.AccountEvent;
 import com.example.events.savings.v1.Posting;
 import com.google.protobuf.InvalidProtocolBufferException;
@@ -32,11 +33,14 @@ public class KafkaTestSupport implements DisposableBean {
     public static final String DEAD_LETTERS = INSTRUCTIONS + ".DLT";
     public static final String ACCOUNT_EVENTS = "savings.account-events.v1";
     public static final String POSTINGS = "savings.postings.v1";
+    public static final String TRANSFER_REQUESTS = "payments.transfer-requests.v1";
+    public static final String TRANSFER_EVENTS = "payments.transfer-events.v1";
     private static final Duration TIMEOUT = Duration.ofSeconds(20);
 
     private final KafkaProducer<String, byte[]> producer;
     private final List<AccountEvent> events = new ArrayList<>();
     private final List<Posting> postings = new ArrayList<>();
+    private final List<TransferRequest> transferRequests = new ArrayList<>();
     private final List<ConsumerRecord<String, byte[]>> deadLetters = new ArrayList<>();
     private final Thread consumerThread;
     private volatile boolean running = true;
@@ -60,8 +64,12 @@ public class KafkaTestSupport implements DisposableBean {
     }
 
     public void send(String key, byte[] value) {
+        send(INSTRUCTIONS, key, value);
+    }
+
+    public void send(String topic, String key, byte[] value) {
         try {
-            producer.send(new ProducerRecord<>(INSTRUCTIONS, key, value)).get(10, TimeUnit.SECONDS);
+            producer.send(new ProducerRecord<>(topic, key, value)).get(10, TimeUnit.SECONDS);
         } catch (Exception e) {
             throw new IllegalStateException("Could not send test message", e);
         }
@@ -97,6 +105,17 @@ public class KafkaTestSupport implements DisposableBean {
         }, count + " x " + type + " postings for account " + accountId);
     }
 
+    /** Waits for, and consumes, the transfer request savings sent to fund the account. */
+    public TransferRequest awaitTransferRequest(String toAccountId) {
+        return await(() -> {
+            synchronized (transferRequests) {
+                var match = transferRequests.stream().filter(r -> r.getToAccountId().equals(toAccountId)).findFirst();
+                match.ifPresent(transferRequests::remove);
+                return match;
+            }
+        }, "transfer request to account " + toAccountId);
+    }
+
     public ConsumerRecord<String, byte[]> awaitDeadLetter(String key) {
         return await(() -> {
             synchronized (deadLetters) {
@@ -124,12 +143,16 @@ public class KafkaTestSupport implements DisposableBean {
 
     private void observe(KafkaConsumer<String, byte[]> consumer) {
         try (consumer) {
-            consumer.subscribe(List.of(ACCOUNT_EVENTS, POSTINGS, DEAD_LETTERS));
+            consumer.subscribe(List.of(ACCOUNT_EVENTS, POSTINGS, TRANSFER_REQUESTS, DEAD_LETTERS));
             while (running) {
                 for (var record : consumer.poll(Duration.ofMillis(100))) {
                     if (record.topic().equals(ACCOUNT_EVENTS)) {
                         synchronized (events) {
                             events.add(parse(record.value()));
+                        }
+                    } else if (record.topic().equals(TRANSFER_REQUESTS)) {
+                        synchronized (transferRequests) {
+                            transferRequests.add(parseTransferRequest(record.value()));
                         }
                     } else if (record.topic().equals(POSTINGS)) {
                         synchronized (postings) {
@@ -148,6 +171,14 @@ public class KafkaTestSupport implements DisposableBean {
     private static AccountEvent parse(byte[] bytes) {
         try {
             return AccountEvent.parseFrom(bytes);
+        } catch (InvalidProtocolBufferException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static TransferRequest parseTransferRequest(byte[] bytes) {
+        try {
+            return TransferRequest.parseFrom(bytes);
         } catch (InvalidProtocolBufferException e) {
             throw new IllegalStateException(e);
         }

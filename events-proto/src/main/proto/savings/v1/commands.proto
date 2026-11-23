@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package savings.v1;
+
+import "common.proto";
+import "google/protobuf/timestamp.proto";
+
+option java_multiple_files = true;
+option java_package = "com.example.events.savings.v1";
+
+// Topic: savings.commands.v1 (owned by the Savings team; its command log, ADR 0019).
+// Key:   the id of the thing the command is about (order_id). Written by the savings REST intake.
+// Every state change savings makes for a customer request starts here, so it can be replayed.
+message SavingsCommand {
+  string command_id = 1;                       // unique per message, used for de-duplication
+  google.protobuf.Timestamp occurred_at = 2;   // when the customer placed it; decisions are made as of then
+
+  oneof payload {
+    OpenAndFund open_and_fund = 10;
+  }
+}
+
+// Open an account on a product version and fund it from the customer's current account (ADR 0020).
+message OpenAndFund {
+  string order_id = 1;                         // chosen by the client; an order id is applied once
+  string customer_id = 2;
+  string product_code = 3;
+  int32 product_version = 4;                   // the version whose terms the customer accepted
+  common.v1.Money amount = 5;
+  string from_account_id = 6;                  // the customer's current account
+}

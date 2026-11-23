@@ -6,7 +6,7 @@ Format: [Michael Nygard](https://cognitect.com/blog/2011/11/15/documenting-archi
 | # | Decision | Status |
 |---|---|---|
 | [0001](0001-scope-savings-only.md) | Scope: savings accounts only, conscious omissions | Accepted |
-| [0002](0002-one-service-and-a-contract-library.md) | One service plus a shared Protobuf contract library | Accepted |
+| [0002](0002-one-service-and-a-contract-library.md) | One service plus a shared Protobuf contract library | Superseded by 0018 |
 | [0003](0003-hexagonal-layers-with-jpa-on-the-domain.md) | Lightweight hexagonal layers, JPA annotations allowed on the domain | Partly superseded by 0016 |
 | [0004](0004-money-and-append-only-ledger.md) | Money as BigDecimal, append-only ledger with cached balance | Accepted |
 | [0005](0005-protobuf-event-contracts.md) | Kafka contracts: Protobuf envelope with `oneof`, keyed by account | Accepted |
@@ -22,3 +22,6 @@ Format: [Michael Nygard](https://cognitect.com/blog/2011/11/15/documenting-archi
 | [0015](0015-transfers-only-with-the-current-account.md) | Savings moves money only to and from the customer's current account | Accepted |
 | [0016](0016-domain-model-separate-from-jpa-entities.md) | Domain model separate from JPA entities, boundaries checked on every build | Accepted |
 | [0017](0017-savings-products.md) | Savings products: versioned terms from a catalogue | Accepted |
+| [0018](0018-service-structure.md) | Service structure: savings, transfers, current account | Accepted |
+| [0019](0019-state-changes-through-a-command-log.md) | State changes only through a command log; REST for queries | Accepted |
+| [0020](0020-open-and-fund-a-savings-product.md) | Opening a savings product: one order that opens the account, then asks for the money | Accepted |

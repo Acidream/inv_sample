@@ -37,6 +37,18 @@ class ArchitectureTest {
                 .check(CLASSES);
     }
 
+    /**
+     * ADR 0018: the account module knows a product's terms, never orders, so orders (and the catalogue)
+     * can move to their own service without touching accounts.
+     */
+    @Test
+    void accountsDoNotDependOnOrders() {
+        noClasses().that().resideInAnyPackage("..savings.domain", "..savings.application")
+                .should().dependOnClassesThat().resideInAnyPackage("..savings.domain.order..",
+                        "..savings.application.order..")
+                .check(CLASSES);
+    }
+
     @Test
     void entitiesLiveInThePersistenceAdapterAndAreNotPublic() {
         // By name: tests obey the import rules too, and only adapter.persistence may import JPA.

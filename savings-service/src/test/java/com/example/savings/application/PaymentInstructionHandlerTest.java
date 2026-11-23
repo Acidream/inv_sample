@@ -58,7 +58,7 @@ class PaymentInstructionHandlerTest {
     void setUp() {
         handler = new PaymentInstructionHandler(accounts, transfers, bookkeeping, processedEvents, events, metrics,
                 Clock.fixed(NOW, ZoneOffset.UTC));
-        account = Account.open(UUID.randomUUID(),
+        account = Account.open(UUID.randomUUID(), UUID.randomUUID(),
                 new SavingsProduct("TEST", 1, "Test", BigDecimal.ZERO, PayoutFrequency.MONTHLY), NOW, ZoneOffset.UTC);
     }
 

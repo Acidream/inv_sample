@@ -1,26 +1,50 @@
 # savings-platform
 
-A savings-account service in an event-driven architecture: accounts are opened over REST, money
-moves in from and out to the customer's current account through instructions from a Payments team on Kafka, interest accrues daily and is
-paid monthly. Built to be **correct and auditable** first, and as simple as that allows.
+Savings products in an event-driven architecture. A customer orders a savings product and funds it
+from their current account. The transfer service moves the money between the two ledgers, interest
+accrues daily and is paid per the product's payout period. Built to be **correct and auditable**
+first, and as simple as that allows.
 
 ## The big picture
 
 ```mermaid
 flowchart LR
-    Client -- "REST: products, open account,<br/>balance, statement" --> API
-    P[Payments team] -- "payments.savings-instructions.v1<br/>TransferFromCurrentAccount<br/>TransferToCurrentAccount<br/>TransferReturned" --> L
+    App[Customer app]
     subgraph S [savings-service]
-        API[REST API] --> UC[use cases]
-        L[instruction listener] --> UC
-        J[nightly interest job] --> UC
-        UC --> DB[(Postgres<br/>products · accounts · transfers<br/>ledger · outbox · processed events)]
-        DB --> R[outbox relay]
+        SC[(savings.commands.v1)] --> SA[orders · accounts<br/>ledger · interest]
+        SA --> SDB[(Postgres)]
     end
-    R -- "savings.account-events.v1<br/>AccountOpened · MoneyDeposited<br/>MoneyWithdrawn · WithdrawalRejected<br/>WithdrawalReturned · InterestPaid" --> C[other teams]
-    R -- "savings.postings.v1<br/>balanced double-entry<br/>postings" --> F[Finance:<br/>general ledger]
-    S -. metrics .-> Prom[Prometheus / Grafana]
+    subgraph T [transfer-service · Payments team]
+        TR[(payments.transfer-requests.v1)] --> TS[transfer saga<br/>account directory]
+        TS --> TDB[(Postgres)]
+    end
+    CA[current account<br/>simulated]
+
+    App -- "PUT /orders/{id} · GET" --> S
+    App -- "PUT /transfers/{id} · GET" --> T
+    SA -- "TransferRequest<br/>(fund an order)" --> TR
+    TS -- "payments.savings-instructions.v1" --> SA
+    SA -- "savings.account-events.v1" --> TS
+    TS -- "payments.current-account-instructions.v1" --> CA
+    CA -- "current-account.events.v1" --> TS
+    TS -- "payments.transfer-events.v1" --> SA
+    SA -- "savings.postings.v1" --> F[Finance:<br/>general ledger]
 ```
+
+Three services, each owning its data, connected only through Kafka contracts
+([ADR 0018](docs/adr/0018-service-structure.md)):
+
+- **savings-service** sells products and keeps the savings ledger. An order opens an account on the
+  product version the customer accepted, then asks the transfer service for the money
+  ([0020](docs/adr/0020-open-and-fund-a-savings-product.md)).
+- **transfer-service** moves money between two accounts of the same customer as a saga with
+  compensation. It knows accounts (owner, ledger) from the ledgers' events, never products.
+- **The current account** isn't built yet. Its contract is, and `current-account-simulator` and the
+  tests play it.
+
+Every state change starts as a message on a service's own input topic. REST accepts commands into
+that log (`202 Accepted`) and answers queries, so a service's inputs can be replayed
+([0019](docs/adr/0019-state-changes-through-a-command-log.md)).
 
 ## Assumptions about the ledger
 
@@ -41,55 +65,69 @@ would change the design.
   account's ledger balance, and `transfer-clearing` nets to zero per transfer
   ([0014](docs/adr/0014-double-entry-postings-for-finance.md)). A full double-entry core inside
   Savings was considered and rejected as more than one product needs.
+- **The ledger is the system of record, not the Kafka log.** Replaying inputs is for recovery and
+  verification; history is never re-booked by new code
+  ([0019](docs/adr/0019-state-changes-through-a-command-log.md)).
+- **One ledger per product, no shared database.** A transfer between the current account and
+  savings is a saga across two ledgers, not one transaction
+  ([0015](docs/adr/0015-transfers-only-with-the-current-account.md),
+  [0018](docs/adr/0018-service-structure.md)).
 
 ## What it does
 
-- **Products**: an account is opened on a savings product (`INSTANT_ACCESS`, `QUARTERLY_INTEREST`,
-  `YEARLY_INTEREST`) and keeps the terms of the version it was opened on: annual rate and payout
-  frequency. New terms are a new version; products come from Flyway reference data.
-- **Money only moves between savings and the customer's own current account.** External payments
-  are the current account's business, so every transfer has a known outcome at once.
-- **Deposits** are credited when Payments reports that the current account was debited.
-- **Withdrawals** are debited immediately if the balance allows it, otherwise rejected. If the
-  current account then refuses the money, Payments sends a return and Savings credits it back.
-  The balance can never go negative.
+- **Products**: savings products (`INSTANT_ACCESS`, `QUARTERLY_INTEREST`, `YEARLY_INTEREST`) come
+  from Flyway reference data in immutable versions: annual rate and payout frequency. New terms are
+  a new version.
+- **Orders**: `PUT /orders/{id}` with the product version the customer accepted, an amount and the
+  current account to take it from. Savings opens the account on those terms, so they are fixed
+  before any money moves, and requests a transfer. The order ends up `FUNDED`, `FUNDING_FAILED`
+  (the account stays open and empty) or `REJECTED` (terms no longer sold).
+- **Transfers**: only between a customer's current account and their savings. The source is
+  debited first, then the target credited. If the current account refuses a credit, savings gets the
+  money back. A request for an account the transfer service doesn't know yet waits for its opening
+  event, and fails after 10 minutes.
+- **Savings balances never go negative**: a withdrawal is debited at once if the balance allows
+  it, otherwise rejected.
 - **Interest**: ACT/365 on each day's closing balance, accrued nightly with sub-cent precision,
   credited at the end of the product's payout period (month, quarter or year), rounded down to the
   cent, with the remainder carried over.
 - **Bookkeeping for Finance**: every booking and every daily accrual is also published as a balanced
-  double-entry posting (customer, transfer clearing, interest expense, interest payable), so the
-  bank's general ledger can be kept and reconciled from it.
+  double-entry posting, so the bank's general ledger can be kept and reconciled from it.
 
 ```mermaid
 sequenceDiagram
-    participant P as Payments
+    participant App
     participant S as Savings
+    participant T as Transfers
     participant C as Current account
-    P->>S: TransferToCurrentAccount
-    alt balance suffices
-        S-->>P: MoneyWithdrawn (debited at once)
-        P->>C: credit
-        opt current account refuses
-            P->>S: TransferReturned
-            S-->>P: WithdrawalReturned (credited back)
-        end
-    else balance too low
-        S-->>P: WithdrawalRejected
+    App->>S: PUT /orders/{id} (product v1, 250.00, from current account)
+    S->>S: open account on v1
+    S-->>T: TransferRequest savings-order-{id}
+    T->>C: DebitCurrentAccount
+    alt debited
+        C-->>T: CurrentAccountDebited
+        T->>S: TransferFromCurrentAccount
+        S-->>T: MoneyDeposited
+        T-->>S: TransferCompleted → order FUNDED
+    else rejected
+        C-->>T: DebitRejected
+        T-->>S: TransferFailed → order FUNDING_FAILED
     end
 ```
 
 ## Other assumptions
 
-- **Money only moves to and from the customer's own current account**, so every transfer has a
-  known outcome at once, and there are no holds and no negative balances
+- **Money only moves between a customer's current account and their savings**, so every transfer
+  has a known outcome at once, and there are no holds
   ([0015](docs/adr/0015-transfers-only-with-the-current-account.md)).
-- **Payments keeps its side of the contract:** it keys instructions by account id, publishes through
-  its own outbox, treats Savings' events as the acknowledgement and reconciles daily
-  ([0007](docs/adr/0007-idempotent-consumer-and-dead-letters.md),
-  [0008](docs/adr/0008-ordering-and-concurrency.md)).
+- **The transfer service knows accounts, not products**: whether a product allows a withdrawal is
+  the product's answer ([0018](docs/adr/0018-service-structure.md)).
 - **An account keeps its product version's terms for life**: new rates apply to new accounts only.
   Products differ in rate and payout frequency, not yet in notice periods, terms or rate tiers
   ([0017](docs/adr/0017-savings-products.md)).
+- **Replay is not complete yet.** Payment instructions are booked at processing time, and event
+  ids are random, and interest runs on the wall clock
+  ([0019](docs/adr/0019-state-changes-through-a-command-log.md) lists what's missing).
 - **One currency (EUR), one business time zone (Europe/Berlin)**; no taxes, campaigns, account
   closing or authentication ([0001](docs/adr/0001-scope-savings-only.md)).
 
@@ -97,17 +135,20 @@ sequenceDiagram
 
 | Concern | How | Read |
 |---|---|---|
-| Exact money | `BigDecimal` value object, strings on the wire, rounding (down) only at payout | [ADR 0004](docs/adr/0004-money-and-append-only-ledger.md) |
+| Service boundaries | Savings, transfers, current account; each owns its ledger; savings modular inside, with recorded triggers for a split | [0018](docs/adr/0018-service-structure.md) |
+| Replayable inputs | State changes only through each service's command log; REST accepts (`202`) and queries; ids chosen by the client | [0019](docs/adr/0019-state-changes-through-a-command-log.md) |
+| Opening a product | One order: open the account on the accepted terms, then request the money; ids derived from the order | [0020](docs/adr/0020-open-and-fund-a-savings-product.md) |
+| Distributed workflow | Transfers as a saga with one compensating step; why no holds | [0015](docs/adr/0015-transfers-only-with-the-current-account.md) |
+| Exact money | `BigDecimal` value object, strings on the wire, rounding (down) only at payout | [0004](docs/adr/0004-money-and-append-only-ledger.md) |
 | Auditability | Append-only ledger with `balance_after`; daily accrual rows | [0004](docs/adr/0004-money-and-append-only-ledger.md), [0010](docs/adr/0010-interest-accrual-and-payout.md) |
 | Books that balance | Every booking published as a double-entry posting, balanced by construction, value-dated | [0014](docs/adr/0014-double-entry-postings-for-finance.md) |
-| No lost or phantom events | Transactional outbox, single ordered relay | [0006](docs/adr/0006-transactional-outbox.md) |
-| At-least-once delivery | De-duplication by message id and by transfer id in the business transaction; retries; alerted dead-letter topic; what Payments must do so nothing is lost | [0007](docs/adr/0007-idempotent-consumer-and-dead-letters.md) |
-| Concurrency | Per-account ordering via partition key, `@Version` optimistic locking, DB constraints, per-account entry numbers independent of instance clocks | [0008](docs/adr/0008-ordering-and-concurrency.md), [0011](docs/adr/0011-ledger-partitioning-and-keyset-pagination.md) |
-| Distributed workflow | Transfers with the current account as a saga with one compensating step; why no holds | [0015](docs/adr/0015-transfers-only-with-the-current-account.md) |
+| No lost or phantom events | Transactional outbox, single ordered relay, in both services | [0006](docs/adr/0006-transactional-outbox.md) |
+| At-least-once delivery | De-duplication by message id and by transfer id in the business transaction; retries; dead-letter topics | [0007](docs/adr/0007-idempotent-consumer-and-dead-letters.md) |
+| Concurrency | Per-account ordering via partition key, optimistic locking, DB constraints, per-account entry numbers; advisory locks so a request and its account's opening event can't miss each other | [0008](docs/adr/0008-ordering-and-concurrency.md), [0011](docs/adr/0011-ledger-partitioning-and-keyset-pagination.md) |
 | Big tables | Monthly partitions, one composite index, keyset pagination | [0011](docs/adr/0011-ledger-partitioning-and-keyset-pagination.md) |
 | Products | Immutable product versions from a catalogue; accounts keep theirs; terms composed, not subclassed | [0017](docs/adr/0017-savings-products.md) |
 | Contracts | Protobuf envelope with `oneof`, additive evolution, anti-corruption layer | [0005](docs/adr/0005-protobuf-event-contracts.md) |
-| Architecture | Hexagonal layers; plain-Java domain, JPA entities only in the persistence adapter; boundaries enforced by Checkstyle import control and ArchUnit | [0003](docs/adr/0003-hexagonal-layers-with-jpa-on-the-domain.md), [0016](docs/adr/0016-domain-model-separate-from-jpa-entities.md) |
+| Architecture | Hexagonal layers; plain-Java domain; services never import each other; enforced by Checkstyle import control and ArchUnit | [0003](docs/adr/0003-hexagonal-layers-with-jpa-on-the-domain.md), [0016](docs/adr/0016-domain-model-separate-from-jpa-entities.md) |
 | Delivery | Acceptance tests first, real infrastructure in tests | [0012](docs/adr/0012-acceptance-tests-first.md) |
 | Operations | Business metrics, dashboard, alerts | [0013](docs/adr/0013-observability.md) |
 | What's left out, and why | Taxes, campaigns, auth, S3, ... | [0001](docs/adr/0001-scope-savings-only.md) |
@@ -121,71 +162,97 @@ Micrometer/Prometheus/Grafana · JUnit 6 · AssertJ · Mockito · Testcontainers
 Checkstyle · GitHub Actions
 
 ```
-./gradlew build          # Checkstyle, unit, architecture and acceptance tests (needs Docker)
+./gradlew build          # Checkstyle, unit, architecture and acceptance tests of both services (needs Docker)
 ```
 
 ## Repository layout
 
 ```
-events-proto/         Protobuf contracts (inbound from Payments, outbound account events)
-savings-service/      the service
-  domain/             Account, Transfer, LedgerEntry, Posting, Money, Interest: plain Java, no JPA, no Spring
-  application/        use cases and the ports they need
-  adapter/            web · messaging · persistence (JPA entities, kept package-private) · scheduling · metrics
-  resources/db/       Flyway migrations
-  test/.../acceptance Karate runner + TestHooks;  test/resources/acceptance/*.feature
-payments-simulator/   CLI that plays the Payments team locally
-ops/                  Prometheus config and alerts, Grafana provisioning and dashboard
-config/checkstyle/    code style and import-control.xml (which layer may import what)
-docs/                 ADRs and glossary
+events-proto/               Protobuf contracts, one package per owning team: savings.v1, payments.v1, current_account.v1
+savings-service/
+  domain/                   Account, LedgerEntry, Posting, Money, Interest, SavingsProduct; order/ Order
+  application/              use cases and the ports they need; order/ OrderService
+  adapter/                  web · messaging · persistence (JPA entities, kept package-private) · scheduling · metrics
+  resources/db/             Flyway migrations
+transfer-service/
+  domain/                   Transfer (the saga), Step, KnownAccount, Money
+  application/              TransferService and its ports
+  adapter/                  web · messaging (listeners, outbox) · persistence (JDBC) · scheduling
+current-account-simulator/  CLI that plays the current account locally
+ops/                        Prometheus config and alerts, Grafana provisioning and dashboard
+config/checkstyle/          code style and import-control.xml (which layer and service may import what)
+docs/                       ADRs and glossary
 ```
 
 ## The specification
 
-The acceptance features are the best entry point into the behaviour:
+The acceptance features are the best entry point into the behaviour.
 
-- [products.feature](savings-service/src/test/resources/acceptance/products.feature): products on sale, new versions, accounts keeping theirs
-- [accounts.feature](savings-service/src/test/resources/acceptance/accounts.feature): opening on a product, validation, problem details
+Savings ([features](savings-service/src/test/resources/acceptance)):
+
+- [orders.feature](savings-service/src/test/resources/acceptance/orders.feature): an order opens the account and requests the money; funded, failed, rejected; idempotent `PUT`
+- [products.feature](savings-service/src/test/resources/acceptance/products.feature): products on sale, new versions, stale terms refused, accounts keeping theirs
 - [deposits.feature](savings-service/src/test/resources/acceptance/deposits.feature): crediting, redelivery and re-sent transfers applied once, reused transfer id → DLT, paginated statement
 - [withdrawals.feature](savings-service/src/test/resources/acceptance/withdrawals.feature): immediate debit, rejection, no double spend, return once, contract violations → DLT
 - [interest.feature](savings-service/src/test/resources/acceptance/interest.feature): monthly and quarterly payout, catch-up from closing balances, carried remainders
 - [postings.feature](savings-service/src/test/resources/acceptance/postings.feature): double-entry postings for deposits, withdrawals and returns, daily accruals and payouts
 
+Transfers:
+
+- [transfers.feature](transfer-service/src/test/resources/acceptance/transfers.feature): both directions, rejected debit, refused credit and its return, waiting for an account, timeouts, ownership, idempotent `PUT`, reused transfer id → DLT
+
 ## Running it locally
 
 ```bash
-./gradlew :savings-service:bootJar
+./gradlew bootJar
 docker compose up --build
+./gradlew -q :current-account-simulator:run --args="serve"       # in a second terminal: plays the current account
 ```
 
 | What | Where |
 |---|---|
-| API docs | http://localhost:8080/swagger-ui.html |
-| Metrics | http://localhost:8080/actuator/prometheus |
+| Savings API docs | http://localhost:8080/swagger-ui.html |
+| Transfers API docs | http://localhost:8081/swagger-ui.html |
 | Prometheus (alerts) | http://localhost:9090/alerts |
 | Grafana (dashboard "Savings") | http://localhost:3000 |
 
-Play the Payments team:
+Order a product and fund it, then move money back:
 
 ```bash
-ACCOUNT=$(curl -s -X POST localhost:8080/accounts -H 'Content-Type: application/json' \
-  -d '{"customerId":"3f2b8c1a-5d4e-4f6a-9b7c-1a2b3c4d5e6f","productCode":"INSTANT_ACCESS"}' | jq -r .id)
+CUSTOMER=3f2b8c1a-5d4e-4f6a-9b7c-1a2b3c4d5e6f
+CURRENT=$(./gradlew -q :current-account-simulator:run --args="open $CUSTOMER" | sed -n 's/currentAccountId=//p')
 
-./gradlew -q :payments-simulator:run --args="deposit  $ACCOUNT 250.00"
-./gradlew -q :payments-simulator:run --args="withdraw $ACCOUNT 100.00"     # prints transferId=...
-./gradlew -q :payments-simulator:run --args="return   $ACCOUNT <transferId>"   # current account refused it
+ORDER=$(uuidgen)
+curl -s -X PUT localhost:8080/orders/$ORDER -H 'Content-Type: application/json' \
+  -d "{\"customerId\":\"$CUSTOMER\",\"productCode\":\"INSTANT_ACCESS\",\"productVersion\":1,\"amount\":\"250.00\",\"fromAccountId\":\"$CURRENT\"}"
+curl -s localhost:8080/orders/$ORDER                    # FUNDING, then FUNDED
+SAVINGS=$(curl -s localhost:8080/orders/$ORDER | jq -r .accountId)
 
-curl -s localhost:8080/accounts/$ACCOUNT
-curl -s localhost:8080/accounts/$ACCOUNT/transactions
+curl -s -X PUT localhost:8081/transfers/tr-$(uuidgen) -H 'Content-Type: application/json' \
+  -d "{\"customerId\":\"$CUSTOMER\",\"fromAccountId\":\"$SAVINGS\",\"toAccountId\":\"$CURRENT\",\"amount\":\"100.00\"}"
+
+curl -s localhost:8080/accounts/$SAVINGS
+curl -s localhost:8080/accounts/$SAVINGS/transactions
 ```
 
 ## REST API
 
+Savings (`:8080`):
+
 | Method | Path | |
 |---|---|---|
 | `GET` | `/products` | products on sale with their current version: `code`, `version`, `name`, `annualRate`, `payoutFrequency` |
-| `POST` | `/accounts` | `{ "customerId": uuid, "productCode": "INSTANT_ACCESS" }` → `201` + `Location`; a product not on sale → `422`. Optional `Idempotency-Key` header: a retry with the same key returns the same account; the key reused for a different body → `422` |
+| `PUT` | `/orders/{orderId}` | `{ customerId, productCode, productVersion, amount: "250.00", fromAccountId }` → `202` + `Location`, status `RECEIVED`. The same order again → `202` with its current state; a different order under the same id → `422` |
+| `GET` | `/orders/{orderId}` | `FUNDING`, `FUNDED`, `FUNDING_FAILED` or `REJECTED`, with `accountId`; `404` until the order has been applied |
 | `GET` | `/accounts/{id}` | balance, accrued interest and the product version it was opened on; amounts as strings |
 | `GET` | `/accounts/{id}/transactions?limit=20&cursor=…` | newest first, keyset-paginated, `nextCursor`; each entry has its `entryNo` (1, 2, 3, ... per account) |
 
-Errors are [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details.
+Transfers (`:8081`):
+
+| Method | Path | |
+|---|---|---|
+| `PUT` | `/transfers/{transferId}` | `{ customerId, fromAccountId, toAccountId, amount: "100.00" }` → `202` + `Location`. Same idempotency rules as orders |
+| `GET` | `/transfers/{transferId}` | `AWAITING_ACCOUNTS`, `DEBITING`, `CREDITING`, `RETURNING`, `COMPLETED` or `FAILED` with `failureReason` and `failureDetail` |
+
+Errors are [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details. When Kafka can't take a
+command, `PUT` answers `503` and nothing was accepted; retry with the same id.

@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package payments.v1;
+
+import "common.proto";
+import "google/protobuf/timestamp.proto";
+
+option java_multiple_files = true;
+option java_package = "com.example.events.payments.v1";
+
+// Topic: payments.current-account-instructions.v1 (owned by the Payments team).
+// Key:   account_id of the current account. Answered on current-account.events.v1.
+// The mirror image of payments.savings-instructions.v1, for the current account's ledger.
+message CurrentAccountInstruction {
+  string event_id = 1;
+  google.protobuf.Timestamp occurred_at = 2;
+  string account_id = 3;
+
+  oneof payload {
+    DebitCurrentAccount debit_current_account = 10;
+    CreditCurrentAccount credit_current_account = 11;
+  }
+}
+
+// Answered with CurrentAccountDebited or DebitRejected.
+message DebitCurrentAccount {
+  string transfer_id = 1;
+  common.v1.Money amount = 2;
+}
+
+// Answered with CurrentAccountCredited or CreditRejected (e.g. the account is blocked or closed).
+message CreditCurrentAccount {
+  string transfer_id = 1;
+  common.v1.Money amount = 2;
+}

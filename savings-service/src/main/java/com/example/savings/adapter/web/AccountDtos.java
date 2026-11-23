@@ -5,9 +5,6 @@ import com.example.savings.domain.Account;
 import com.example.savings.domain.LedgerEntry;
 import com.example.savings.domain.Money;
 import com.example.savings.domain.SavingsProduct;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -19,10 +16,6 @@ import java.util.UUID;
 final class AccountDtos {
 
     private AccountDtos() {
-    }
-
-    /** @param productCode a product on sale, see {@code GET /products} */
-    record OpenAccountRequest(@NotNull UUID customerId, @NotBlank @Size(max = 40) String productCode) {
     }
 
     /** A product version: its terms. {@code annualRate} is a decimal fraction ("0.0250" = 2.5 % p.a.). */

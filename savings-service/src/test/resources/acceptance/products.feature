@@ -25,29 +25,51 @@ Feature: Savings products and their versions
     When method get
     Then match response.items[*].code !contains productCode
 
-  Scenario: a new version applies to accounts opened from the day it takes effect; earlier accounts keep theirs
+  Scenario: a new version applies to orders placed from the day it takes effect; earlier accounts keep theirs
     * hooks.setClock('2026-03-15T09:00:00Z')
     * def productCode = hooks.product(0.02, 'MONTHLY')
     * hooks.productVersion(productCode, 2, 0.03, 'QUARTERLY', '2026-04-01T00:00:00+02:00')
 
-    Given path 'accounts'
-    And request { customerId: '#(hooks.uuid())', productCode: '#(productCode)' }
-    When method post
-    Then status 201
-    And match response.product contains { version: 1, annualRate: '0.0200', payoutFrequency: 'MONTHLY' }
-    * def before = response.id
+    * def before = hooks.uuid()
+    Given path 'orders', before
+    And request { customerId: '#(hooks.uuid())', productCode: '#(productCode)', productVersion: 1, amount: '10.00', fromAccountId: '#(hooks.uuid())' }
+    When method put
+    Then status 202
+    Given path 'orders', before
+    And retry until responseStatus == 200
+    When method get
+    Then match response.status == 'FUNDING'
+    * def beforeAccount = response.accountId
 
     * hooks.setClock('2026-04-01T09:00:00Z')
     Given path 'products'
     When method get
     Then match response.items contains { code: '#(productCode)', version: 2, name: '#string', annualRate: '0.0300', payoutFrequency: 'QUARTERLY' }
 
-    Given path 'accounts'
-    And request { customerId: '#(hooks.uuid())', productCode: '#(productCode)' }
-    When method post
-    Then status 201
-    And match response.product contains { version: 2, annualRate: '0.0300', payoutFrequency: 'QUARTERLY' }
+    # Terms the customer saw before the change are not sold any more
+    * def stale = hooks.uuid()
+    Given path 'orders', stale
+    And request { customerId: '#(hooks.uuid())', productCode: '#(productCode)', productVersion: 1, amount: '10.00', fromAccountId: '#(hooks.uuid())' }
+    When method put
+    Then status 202
+    Given path 'orders', stale
+    And retry until responseStatus == 200
+    When method get
+    Then match response contains { status: 'REJECTED', rejectionReason: 'PRODUCT_VERSION_NOT_CURRENT', accountId: null }
 
-    Given path 'accounts', before
+    * def after = hooks.uuid()
+    Given path 'orders', after
+    And request { customerId: '#(hooks.uuid())', productCode: '#(productCode)', productVersion: 2, amount: '10.00', fromAccountId: '#(hooks.uuid())' }
+    When method put
+    Then status 202
+    Given path 'orders', after
+    And retry until responseStatus == 200
+    When method get
+    Then match response.status == 'FUNDING'
+    Given path 'accounts', response.accountId
+    When method get
+    Then match response.product contains { version: 2, annualRate: '0.0300', payoutFrequency: 'QUARTERLY' }
+
+    Given path 'accounts', beforeAccount
     When method get
     Then match response.product contains { version: 1, annualRate: '0.0200', payoutFrequency: 'MONTHLY' }

@@ -12,8 +12,13 @@ Terms as they are used in code, events and docs. If code and glossary disagree, 
 | **Ledger** | Append-only list of bookings per account. Never updated or deleted; corrections are new entries. | `domain.LedgerEntry`, `ledger_entry` |
 | **Ledger entry** | One booking: entry number, type (DEPOSIT, WITHDRAWAL, WITHDRAWAL_RETURN, INTEREST), signed amount, balance after, business reference, booking time. | `LedgerEntry` |
 | **Entry number** | Numbers an account's ledger entries 1, 2, 3, ... in booking order. With the booking time, which never goes backwards on one account, it defines the order of the ledger. | `LedgerEntry.entryNo` |
-| **Current account** | The customer's main account at the bank, owned by another team. The only place savings money comes from or goes to. | not modelled |
-| **Payments** | The team that orchestrates transfers between current account and savings, and makes external payments from the current account. | `payments.v1.PaymentInstruction` |
+| **Current account** | The customer's main account at the bank, owned by another team. The only place savings money comes from or goes to. | contract only: `current_account.v1`; played by `current-account-simulator` |
+| **Payments** | The team that orchestrates transfers between current account and savings, and makes external payments from the current account. Owns the transfer service. | `transfer-service`, `payments.v1` |
+| **Transfer service** | Moves money between two accounts of the same customer as a saga across their ledgers. Knows accounts, not products. | `transfer-service`, `Transfer` |
+| **Transfer request** | Asks the transfer service to move an amount from one account to another, under a transfer id the requester chose. | `payments.v1.TransferRequest` |
+| **Account directory** | The transfer service's list of known accounts (owner, ledger), built from `AccountOpened` and `CurrentAccountOpened` events. | `known_account`, `AccountDirectory` |
+| **Order** | A customer's request to open a savings account on a product version and fund it from their current account. `REJECTED`, `FUNDING`, `FUNDED` or `FUNDING_FAILED`. | `domain.order.Order`, `savings_order` |
+| **Command log** | A service's own input topic. Every state change starts as a message there; REST only appends to it. | `savings.commands.v1`, `payments.transfer-requests.v1` |
 | **Payment instruction** | A message from Payments: TransferFromCurrentAccount, TransferToCurrentAccount or TransferReturned. | `payments.v1.PaymentInstruction`, `application.PaymentInstruction` |
 | **Transfer** | One movement between current account and savings, identified by a `transferId` chosen by Payments. States: IN COMPLETED; OUT COMPLETED, REJECTED or RETURNED. | `domain.Transfer`, `transfer` |
 | **Deposit** | Transfer in. The current account was already debited; Savings credits at once. | `Account.deposit` |

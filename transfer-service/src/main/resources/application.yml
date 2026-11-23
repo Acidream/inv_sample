@@ -1,0 +1,56 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: transfer-service
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5433/transfers}
+    username: ${DB_USER:transfers}
+    password: ${DB_PASSWORD:transfers}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.ByteArraySerializer
+      acks: all
+      properties:
+        enable.idempotence: true
+    consumer:
+      group-id: transfer-service
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.ByteArrayDeserializer
+    listener:
+      ack-mode: record
+      concurrency: ${transfers.topics.partitions}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, prometheus
+  metrics:
+    tags:
+      application: transfer-service
+
+transfers:
+  topics:
+    transfer-requests: payments.transfer-requests.v1
+    transfer-events: payments.transfer-events.v1
+    savings-instructions: payments.savings-instructions.v1
+    current-account-instructions: payments.current-account-instructions.v1
+    savings-events: savings.account-events.v1
+    current-account-events: current-account.events.v1
+    partitions: 3
+  outbox:
+    poll-interval-ms: 200
+    batch-size: 100
+  # A request whose accounts are still unknown after this long fails as INVALID_REQUEST.
+  awaiting-accounts-timeout: 10m
+  jobs:
+    awaiting-accounts-cron: "0 * * * * *"

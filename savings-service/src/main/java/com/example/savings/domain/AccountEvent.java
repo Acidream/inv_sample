@@ -7,7 +7,9 @@ public sealed interface AccountEvent {
 
     UUID accountId();
 
-    record AccountOpened(UUID accountId, UUID customerId, SavingsProduct product) implements AccountEvent {
+    /** @param orderId the order that opened the account (ADR 0020) */
+    record AccountOpened(UUID accountId, UUID customerId, SavingsProduct product, UUID orderId)
+            implements AccountEvent {
     }
 
     record MoneyDeposited(UUID accountId, String transferId, Money amount, Money balance) implements AccountEvent {

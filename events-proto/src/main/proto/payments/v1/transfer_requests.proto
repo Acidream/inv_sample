@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package payments.v1;
+
+import "common.proto";
+import "google/protobuf/timestamp.proto";
+
+option java_multiple_files = true;
+option java_package = "com.example.events.payments.v1";
+
+// Topic: payments.transfer-requests.v1 (owned by the Payments team; the transfer service's command log).
+// Key:   transfer_id. Requests for one transfer are consumed in order.
+// Written by the transfer service's own REST intake (PUT /transfers/{id}) and by other services that
+// need money moved, e.g. savings when an order opens an account (ADR 0020).
+//
+// The transfer service moves money between two accounts of the same customer; it knows accounts, not
+// products. The outcome is published on payments.transfer-events.v1.
+message TransferRequest {
+  string request_id = 1;                       // unique per message, used for de-duplication
+  google.protobuf.Timestamp occurred_at = 2;
+  string transfer_id = 3;                      // chosen by the requester; a transfer id is applied once
+  string customer_id = 4;                      // must own both accounts
+  string from_account_id = 5;
+  string to_account_id = 6;
+  common.v1.Money amount = 7;
+}

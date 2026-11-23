@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package payments.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option java_multiple_files = true;
+option java_package = "com.example.events.payments.v1";
+
+// Topic: payments.transfer-events.v1 (owned by the Payments team).
+// Key:   transfer_id. Delivery is at-least-once: consumers must de-duplicate on event_id.
+// Every TransferRequest ends in exactly one of these.
+message TransferEvent {
+  string event_id = 1;
+  google.protobuf.Timestamp occurred_at = 2;
+  string transfer_id = 3;
+
+  oneof payload {
+    TransferCompleted transfer_completed = 10;
+    TransferFailed transfer_failed = 11;
+  }
+}
+
+// The source was debited and the target credited.
+message TransferCompleted {
+}
+
+// No money moved in the end: either nothing was debited, or a debit was compensated.
+message TransferFailed {
+  enum Reason {
+    REASON_UNSPECIFIED = 0;
+    INVALID_REQUEST = 1;    // unknown account, not the customer's, or a route that isn't supported
+    DEBIT_REJECTED = 2;     // the source refused the debit (balance, overdraft limit, product rules)
+    CREDIT_REFUSED = 3;     // the target refused the credit; the debit was credited back
+  }
+  Reason reason = 1;
+  string detail = 2;
+}

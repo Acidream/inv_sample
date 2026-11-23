@@ -17,8 +17,14 @@ public record SavingsProperties(
         @Valid @NotNull Outbox outbox,
         @Valid @NotNull Retention retention) {
 
+    /**
+     * @param savingsCommands  savings' own command log (ADR 0019)
+     * @param transferRequests where savings asks the transfer service for money (owned by Payments)
+     * @param transferEvents   outcomes of transfers (owned by Payments)
+     */
     public record Topics(@NotBlank String paymentInstructions, @NotBlank String accountEvents,
-            @NotBlank String postings, @Positive int partitions) {
+            @NotBlank String postings, @NotBlank String savingsCommands, @NotBlank String transferRequests,
+            @NotBlank String transferEvents, @Positive int partitions) {
     }
 
     public record Outbox(@Positive long pollIntervalMs, @Positive int batchSize) {

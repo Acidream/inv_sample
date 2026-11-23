@@ -21,7 +21,7 @@ class AccountTest {
     private static final InterestPeriod JANUARY = PayoutFrequency.MONTHLY.periodContaining(LocalDate.of(2026, 1, 1));
     private static final InterestPeriod FEBRUARY = PayoutFrequency.MONTHLY.periodContaining(LocalDate.of(2026, 2, 1));
 
-    private final Account account = Account.open(UUID.randomUUID(), PRODUCT, NOW, BERLIN);
+    private final Account account = Account.open(UUID.randomUUID(), UUID.randomUUID(), PRODUCT, NOW, BERLIN);
 
     @Test
     void depositProducesLedgerEntryWithRunningBalance() {
@@ -115,7 +115,7 @@ class AccountTest {
 
     @Test
     void payoutIsDueAtTheEndOfTheProductsPayoutPeriod() {
-        var quarterly = Account.open(UUID.randomUUID(),
+        var quarterly = Account.open(UUID.randomUUID(), UUID.randomUUID(),
                 new SavingsProduct("Q", 1, "Quarterly", new BigDecimal("0.0365"), PayoutFrequency.QUARTERLY), NOW,
                 BERLIN);
 

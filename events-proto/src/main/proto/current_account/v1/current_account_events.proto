@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package current_account.v1;
+
+import "common.proto";
+import "google/protobuf/timestamp.proto";
+
+option java_multiple_files = true;
+option java_package = "com.example.events.currentaccount.v1";
+
+// Topic: current-account.events.v1 (owned by the Current Account team; played by
+//        current-account-simulator and the tests until that service exists).
+// Key:   account_id. Delivery is at-least-once: consumers must de-duplicate on event_id.
+message CurrentAccountEvent {
+  string event_id = 1;
+  google.protobuf.Timestamp occurred_at = 2;
+  string account_id = 3;
+
+  oneof payload {
+    CurrentAccountOpened current_account_opened = 10;
+    CurrentAccountDebited current_account_debited = 11;
+    DebitRejected debit_rejected = 12;
+    CurrentAccountCredited current_account_credited = 13;
+    CreditRejected credit_rejected = 14;
+  }
+}
+
+message CurrentAccountOpened {
+  string customer_id = 1;
+}
+
+message CurrentAccountDebited {
+  string transfer_id = 1;
+  common.v1.Money amount = 2;
+}
+
+message DebitRejected {
+  string transfer_id = 1;
+  string reason = 2;            // free text for people, e.g. "overdraft limit exceeded"
+}
+
+message CurrentAccountCredited {
+  string transfer_id = 1;
+  common.v1.Money amount = 2;
+}
+
+message CreditRejected {
+  string transfer_id = 1;
+  string reason = 2;
+}

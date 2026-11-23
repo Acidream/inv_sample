@@ -6,7 +6,6 @@ import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import java.util.List;
-import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
@@ -17,8 +16,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * Transactional outbox, read side. Polls unpublished rows in insertion order and sends them keyed by
- * account id, so events of one account keep their order on one partition. Rows are marked published
+ * Transactional outbox, read side. Polls unpublished rows in insertion order and sends them with their
+ * key (the account id, or the transfer id for transfer requests), so messages with one key keep their
+ * order on one partition. Rows are marked published
  * only after Kafka acknowledged them; a crash in between re-sends them (at-least-once).
  *
  * <p>Order across instances rests on two guards:
@@ -37,7 +37,7 @@ class OutboxRelay {
     static final Duration ACK_TIMEOUT = Duration.ofSeconds(30);
     static final Duration DRAIN_BUDGET = Duration.ofSeconds(60);
 
-    private record Row(long id, String topic, UUID key, byte[] payload) {
+    private record Row(long id, String topic, String key, byte[] payload) {
     }
 
     private final JdbcClient jdbc;
@@ -72,20 +72,20 @@ class OutboxRelay {
     int relayBatch() {
         Integer sent = tx.execute(status -> {
             var rows = jdbc.sql("""
-                    select id, topic, aggregate_id, payload from outbox_event
+                    select id, topic, message_key, payload from outbox_event
                     where published_at is null
                     order by id
                     limit :limit
                     for update""")
                     .param("limit", batchSize)
                     .query((rs, n) -> new Row(rs.getLong("id"), rs.getString("topic"),
-                            rs.getObject("aggregate_id", UUID.class), rs.getBytes("payload")))
+                            rs.getString("message_key"), rs.getBytes("payload")))
                     .list();
             if (rows.isEmpty()) {
                 return 0;
             }
             var acks = rows.stream()
-                    .map(row -> kafka.send(row.topic(), row.key().toString(), row.payload()))
+                    .map(row -> kafka.send(row.topic(), row.key(), row.payload()))
                     .toArray(CompletableFuture<?>[]::new);
             CompletableFuture.allOf(acks).orTimeout(ACK_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS).join();
 

@@ -4,6 +4,7 @@ import com.example.savings.application.UnknownAccountException;
 import com.example.savings.application.UnknownTransferException;
 import com.example.savings.config.SavingsProperties;
 import com.example.savings.domain.IllegalTransferException;
+import com.example.savings.domain.order.IllegalOrderTransitionException;
 import com.google.protobuf.InvalidProtocolBufferException;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.apache.kafka.clients.admin.NewTopic;
@@ -57,7 +58,8 @@ class KafkaConfig {
                 IllegalArgumentException.class,
                 IllegalTransferException.class,
                 UnknownAccountException.class,
-                UnknownTransferException.class);
+                UnknownTransferException.class,
+                IllegalOrderTransitionException.class);
         return handler;
     }
 
@@ -82,6 +84,33 @@ class KafkaConfig {
     @Bean
     NewTopic postingsTopic(SavingsProperties properties) {
         return topic(properties.topics().postings(), properties);
+    }
+
+    @Bean
+    NewTopic savingsCommandsTopic(SavingsProperties properties) {
+        return topic(properties.topics().savingsCommands(), properties);
+    }
+
+    @Bean
+    NewTopic savingsCommandsDeadLetterTopic(SavingsProperties properties) {
+        return topic(properties.topics().savingsCommands() + DLT_SUFFIX, properties);
+    }
+
+    // The transfer topics belong to the Payments team; created here only for local development and tests.
+
+    @Bean
+    NewTopic transferRequestsTopic(SavingsProperties properties) {
+        return topic(properties.topics().transferRequests(), properties);
+    }
+
+    @Bean
+    NewTopic transferEventsTopic(SavingsProperties properties) {
+        return topic(properties.topics().transferEvents(), properties);
+    }
+
+    @Bean
+    NewTopic transferEventsDeadLetterTopic(SavingsProperties properties) {
+        return topic(properties.topics().transferEvents() + DLT_SUFFIX, properties);
     }
 
     private static NewTopic topic(String name, SavingsProperties properties) {

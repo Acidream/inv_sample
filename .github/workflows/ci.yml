@@ -31,3 +31,5 @@ jobs:
           path: |
             savings-service/build/reports/
             savings-service/build/karate-reports/
+            transfer-service/build/reports/
+            transfer-service/build/karate-reports/

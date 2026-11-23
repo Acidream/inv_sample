@@ -1,6 +1,6 @@
 # 0017 – Savings products: versioned terms from a catalogue
 
-Date: 2026-11-23 · Status: Accepted
+Date: 2026-11-23 · Status: Accepted; opening accounts amended by [0020](0020-open-and-fund-a-savings-product.md)
 
 ## Context
 

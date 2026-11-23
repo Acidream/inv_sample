@@ -4,6 +4,9 @@ import com.example.events.common.v1.Money;
 import com.example.events.payments.v1.PaymentInstruction;
 import com.example.events.payments.v1.TransferFromCurrentAccount;
 import com.example.events.payments.v1.TransferReturned;
+import com.example.events.payments.v1.TransferCompleted;
+import com.example.events.payments.v1.TransferEvent;
+import com.example.events.payments.v1.TransferFailed;
 import com.example.events.payments.v1.TransferToCurrentAccount;
 import com.example.events.savings.v1.AccountEvent;
 import com.example.events.savings.v1.Posting;
@@ -131,6 +134,32 @@ public final class TestHooks {
         send(envelope(accountId, eventId).setTransferFromCurrentAccount(TransferFromCurrentAccount.newBuilder()
                 .setTransferId(transferId)
                 .setAmount(eur(amount))));
+    }
+
+    // --- the transfer service ---------------------------------------------------------------------
+
+    /** Waits for the request savings sent to fund the account, as a JSON-like map. */
+    public static Map<String, Object> awaitTransferRequest(String accountId) {
+        return toMap(kafka().awaitTransferRequest(accountId));
+    }
+
+    public static void transferCompleted(String transferId) {
+        sendTransferEvent(TransferEvent.newBuilder().setTransferId(transferId)
+                .setTransferCompleted(TransferCompleted.getDefaultInstance()));
+    }
+
+    public static void transferFailed(String transferId, String reason, String detail) {
+        sendTransferEvent(TransferEvent.newBuilder().setTransferId(transferId)
+                .setTransferFailed(TransferFailed.newBuilder()
+                        .setReason(TransferFailed.Reason.valueOf(reason))
+                        .setDetail(detail)));
+    }
+
+    private static void sendTransferEvent(TransferEvent.Builder event) {
+        var built = event.setEventId(UUID.randomUUID().toString())
+                .setOccurredAt(com.google.protobuf.Timestamp.newBuilder().setSeconds(Instant.now().getEpochSecond()))
+                .build();
+        kafka().send(KafkaTestSupport.TRANSFER_EVENTS, built.getTransferId(), built.toByteArray());
     }
 
     // --- observing Savings ------------------------------------------------------------------------

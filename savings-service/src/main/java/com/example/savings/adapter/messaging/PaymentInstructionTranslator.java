@@ -51,7 +51,7 @@ final class PaymentInstructionTranslator {
         };
     }
 
-    private static Money money(com.example.events.common.v1.Money money) {
+    static Money money(com.example.events.common.v1.Money money) {
         if (!Money.CURRENCY.equals(money.getCurrency())) {
             throw new IllegalArgumentException("Unsupported currency: " + money.getCurrency());
         }
@@ -67,10 +67,14 @@ final class PaymentInstructionTranslator {
         return new Money(amount).requirePositive();
     }
 
-    private static String id(String value, String field) {
+    static String id(String value, String field) {
+        return id(value, field, MAX_ID_LENGTH);
+    }
+
+    static String id(String value, String field, int maxLength) {
         required(value, field);
-        if (value.codePointCount(0, value.length()) > MAX_ID_LENGTH) {
-            throw new IllegalArgumentException(field + " longer than " + MAX_ID_LENGTH + " characters");
+        if (value.codePointCount(0, value.length()) > maxLength) {
+            throw new IllegalArgumentException(field + " longer than " + maxLength + " characters");
         }
         if (value.indexOf('\u0000') >= 0) {
             throw new IllegalArgumentException(field + " contains a NUL character");
@@ -78,7 +82,7 @@ final class PaymentInstructionTranslator {
         return value;
     }
 
-    private static String required(String value, String field) {
+    static String required(String value, String field) {
         if (value.isBlank()) {
             throw new IllegalArgumentException("Missing " + field);
         }

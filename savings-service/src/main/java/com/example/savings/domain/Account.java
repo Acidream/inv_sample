@@ -64,8 +64,9 @@ public final class Account {
         this.version = state.version();
     }
 
-    public static Account open(UUID customerId, SavingsProduct product, Instant now, ZoneId zone) {
-        return new Account(new State(UUID.randomUUID(), customerId, product, Money.ZERO, BigDecimal.ZERO,
+    /** @param id chosen by the caller, so the same order opens the same account on every replay (ADR 0019) */
+    public static Account open(UUID id, UUID customerId, SavingsProduct product, Instant now, ZoneId zone) {
+        return new Account(new State(id, customerId, product, Money.ZERO, BigDecimal.ZERO,
                 LocalDate.ofInstant(now, zone).minusDays(1), now, 0, now, null));
     }
 

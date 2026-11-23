@@ -12,3 +12,9 @@ scrape_configs:
     scrape_protocols: [OpenMetricsText1.0.0, PrometheusText0.0.4]
     static_configs:
       - targets: ["savings-service:8080"]
+
+  - job_name: transfer-service
+    metrics_path: /actuator/prometheus
+    scrape_protocols: [OpenMetricsText1.0.0, PrometheusText0.0.4]
+    static_configs:
+      - targets: ["transfer-service:8081"]

@@ -44,6 +44,7 @@ message AccountOpened {
   string product_code = 3;         // e.g. "INSTANT_ACCESS"
   int32 product_version = 4;
   PayoutFrequency payout_frequency = 5;
+  string order_id = 6;             // the order that opened the account (ADR 0020)
 }
 
 message MoneyDeposited {

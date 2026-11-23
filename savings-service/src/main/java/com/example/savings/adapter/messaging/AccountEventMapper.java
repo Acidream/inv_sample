@@ -32,7 +32,8 @@ final class AccountEventMapper {
                     .setAnnualRate(e.product().annualRate().toPlainString())
                     .setProductCode(e.product().code())
                     .setProductVersion(e.product().version())
-                    .setPayoutFrequency(AccountOpened.PayoutFrequency.valueOf(e.product().payoutFrequency().name())));
+                    .setPayoutFrequency(AccountOpened.PayoutFrequency.valueOf(e.product().payoutFrequency().name()))
+                    .setOrderId(e.orderId().toString()));
             case AccountEvent.MoneyDeposited e -> envelope.setMoneyDeposited(MoneyDeposited.newBuilder()
                     .setTransferId(e.transferId())
                     .setAmount(money(e.amount()))

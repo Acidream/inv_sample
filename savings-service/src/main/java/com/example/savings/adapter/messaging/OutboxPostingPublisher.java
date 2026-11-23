@@ -25,7 +25,7 @@ class OutboxPostingPublisher implements PostingPublisher {
     @Override
     public void publish(Posting posting) {
         var message = toMessage(posting, UUID.randomUUID().toString());
-        outbox.add(topic, posting.accountId(), "POSTING_" + posting.type(), message.toByteArray());
+        outbox.add(topic, posting.accountId().toString(), "POSTING_" + posting.type(), message.toByteArray());
     }
 
     static com.example.events.savings.v1.Posting toMessage(Posting posting, String postingId) {

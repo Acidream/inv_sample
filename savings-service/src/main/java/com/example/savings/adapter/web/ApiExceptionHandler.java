@@ -1,10 +1,10 @@
 package com.example.savings.adapter.web;
 
 import com.example.savings.adapter.web.StatementCursorCodec.InvalidCursorException;
-import com.example.savings.application.IdempotencyKeyInUseException;
-import com.example.savings.application.IdempotencyKeyReusedException;
-import com.example.savings.application.ProductNotOnSaleException;
 import com.example.savings.application.UnknownAccountException;
+import com.example.savings.application.order.OrderIdInUseException;
+import com.example.savings.application.order.UnknownOrderException;
+import com.example.savings.application.port.CommandLog.CommandLogUnavailableException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -20,19 +20,21 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, e.getMessage());
     }
 
-    @ExceptionHandler(IdempotencyKeyReusedException.class)
-    ProblemDetail idempotencyKeyReused(IdempotencyKeyReusedException e) {
+    /** Also the answer until an accepted order has been applied: the client polls. */
+    @ExceptionHandler(UnknownOrderException.class)
+    ProblemDetail unknownOrder(UnknownOrderException e) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, e.getMessage());
+    }
+
+    @ExceptionHandler(OrderIdInUseException.class)
+    ProblemDetail orderIdInUse(OrderIdInUseException e) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_CONTENT, e.getMessage());
     }
 
-    @ExceptionHandler(ProductNotOnSaleException.class)
-    ProblemDetail productNotOnSale(ProductNotOnSaleException e) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_CONTENT, e.getMessage());
-    }
-
-    @ExceptionHandler(IdempotencyKeyInUseException.class)
-    ProblemDetail idempotencyKeyInUse(IdempotencyKeyInUseException e) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
+    /** Nothing was accepted; the client retries with the same order id. */
+    @ExceptionHandler(CommandLogUnavailableException.class)
+    ProblemDetail commandLogUnavailable(CommandLogUnavailableException e) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, e.getMessage());
     }
 
     @ExceptionHandler(InvalidCursorException.class)

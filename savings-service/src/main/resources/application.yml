@@ -51,6 +51,9 @@ savings:
     payment-instructions: payments.savings-instructions.v1
     account-events: savings.account-events.v1
     postings: savings.postings.v1
+    savings-commands: savings.commands.v1
+    transfer-requests: payments.transfer-requests.v1
+    transfer-events: payments.transfer-events.v1
     partitions: 3
   outbox:
     poll-interval-ms: 200

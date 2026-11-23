@@ -4,4 +4,4 @@ plugins {
 
 rootProject.name = "savings-platform"
 
-include("events-proto", "savings-service", "payments-simulator")
+include("events-proto", "savings-service", "transfer-service", "current-account-simulator")

@@ -24,6 +24,6 @@ class OutboxAccountEventPublisher implements AccountEventPublisher {
     @Override
     public void publish(AccountEvent event) {
         var message = AccountEventMapper.toMessage(event, UUID.randomUUID().toString(), clock.instant());
-        outbox.add(topic, event.accountId(), message.getPayloadCase().name(), message.toByteArray());
+        outbox.add(topic, event.accountId().toString(), message.getPayloadCase().name(), message.toByteArray());
     }
 }

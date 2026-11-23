@@ -1,5 +1,7 @@
-# Local stack: ./gradlew :savings-service:bootJar && docker compose up --build
-#   API        http://localhost:8080/swagger-ui.html
+# Local stack: ./gradlew bootJar && docker compose up --build
+#   Savings    http://localhost:8080/swagger-ui.html
+#   Transfers  http://localhost:8081/swagger-ui.html
+#   The current account is played by: ./gradlew -q :current-account-simulator:run --args="serve"
 #   Prometheus http://localhost:9090   (alerts: /alerts)
 #   Grafana    http://localhost:3000   (anonymous viewer, dashboard "Savings")
 services:
@@ -11,6 +13,18 @@ services:
       POSTGRES_PASSWORD: savings
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U savings"]
+      interval: 2s
+      retries: 30
+
+  # The transfer service owns its data: a database of its own (ADR 0018).
+  transfers-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: transfers
+      POSTGRES_USER: transfers
+      POSTGRES_PASSWORD: transfers
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U transfers"]
       interval: 2s
       retries: 30
 
@@ -43,6 +57,16 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
     depends_on:
       postgres: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+
+  transfer-service:
+    build: ./transfer-service
+    ports: ["8081:8081"]
+    environment:
+      DB_URL: jdbc:postgresql://transfers-db:5432/transfers
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    depends_on:
+      transfers-db: { condition: service_healthy }
       kafka: { condition: service_healthy }
 
   prometheus:

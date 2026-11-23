@@ -2,48 +2,74 @@
 <!DOCTYPE import-control PUBLIC "-//Checkstyle//DTD ImportControl Configuration 1.4//EN"
         "https://checkstyle.org/dtds/import_control_1_4.dtd">
 <!--
-  What each layer may import (ADR 0003, 0016). Checked on every build, main and test sources; the same
-  rules are checked on bytecode by ArchitectureTest. Rules are matched from the most specific package
-  outwards: a subpackage's allow wins over the root's disallow.
+  What each layer may import (ADR 0003, 0016, 0018). Checked on every build, main and test sources; the
+  same rules are checked on bytecode by each service's ArchitectureTest. Rules are matched from the most
+  specific package outwards: a subpackage's allow wins over its parent's disallow.
 
+  * Services never import each other's code: they share only the contracts (com.example.events).
   * domain: plain Java only, nothing else is allowed (test libraries for the tests next to it).
   * application: domain, its own ports, and the few Spring annotations a use case needs.
-  * Persistence technology (JPA, Hibernate, Spring Data) and the persistence adapter's own classes
-    (entities, Spring Data repositories) stay inside adapter.persistence.
+  * Persistence technology (JPA, Hibernate, Spring Data) stays inside adapter.persistence.
 -->
-<import-control pkg="com.example.savings" strategyOnMismatch="allowed">
+<import-control pkg="com.example" strategyOnMismatch="allowed">
 
-    <disallow pkg="jakarta.persistence"/>
-    <disallow pkg="org.hibernate"/>
-    <disallow pkg="org.springframework.data"/>
-    <disallow pkg="com.example.savings.adapter.persistence"/>
+    <subpackage name="savings">
+        <disallow pkg="com.example.transfers"/>
+        <disallow pkg="jakarta.persistence"/>
+        <disallow pkg="org.hibernate"/>
+        <disallow pkg="org.springframework.data"/>
+        <disallow pkg="com.example.savings.adapter.persistence"/>
 
-    <subpackage name="domain" strategyOnMismatch="disallowed">
-        <allow pkg="java"/>
-        <allow pkg="com.example.savings.domain"/>
-        <allow pkg="org.junit"/>
-        <allow pkg="org.assertj"/>
+        <subpackage name="domain" strategyOnMismatch="disallowed">
+            <allow pkg="java"/>
+            <allow pkg="com.example.savings.domain"/>
+            <allow pkg="org.junit"/>
+            <allow pkg="org.assertj"/>
+        </subpackage>
+
+        <subpackage name="application" strategyOnMismatch="disallowed">
+            <allow pkg="java"/>
+            <allow pkg="com.example.savings.domain"/>
+            <allow pkg="com.example.savings.application"/>
+            <allow class="org.springframework.stereotype.Service"/>
+            <allow class="org.springframework.stereotype.Component"/>
+            <allow class="org.springframework.transaction.annotation.Transactional"/>
+            <allow pkg="org.slf4j"/>
+            <allow pkg="org.junit"/>
+            <allow pkg="org.assertj"/>
+            <allow pkg="org.mockito"/>
+        </subpackage>
+
+        <subpackage name="adapter">
+            <subpackage name="persistence">
+                <allow pkg="jakarta.persistence"/>
+                <allow pkg="org.hibernate"/>
+                <allow pkg="org.springframework.data"/>
+                <allow pkg="com.example.savings.adapter.persistence"/>
+            </subpackage>
+        </subpackage>
     </subpackage>
 
-    <subpackage name="application" strategyOnMismatch="disallowed">
-        <allow pkg="java"/>
-        <allow pkg="com.example.savings.domain"/>
-        <allow pkg="com.example.savings.application"/>
-        <allow class="org.springframework.stereotype.Service"/>
-        <allow class="org.springframework.stereotype.Component"/>
-        <allow class="org.springframework.transaction.annotation.Transactional"/>
-        <allow pkg="org.slf4j"/>
-        <allow pkg="org.junit"/>
-        <allow pkg="org.assertj"/>
-        <allow pkg="org.mockito"/>
-    </subpackage>
+    <subpackage name="transfers">
+        <disallow pkg="com.example.savings"/>
 
-    <subpackage name="adapter">
-        <subpackage name="persistence">
-            <allow pkg="jakarta.persistence"/>
-            <allow pkg="org.hibernate"/>
-            <allow pkg="org.springframework.data"/>
-            <allow pkg="com.example.savings.adapter.persistence"/>
+        <subpackage name="domain" strategyOnMismatch="disallowed">
+            <allow pkg="java"/>
+            <allow pkg="com.example.transfers.domain"/>
+            <allow pkg="org.junit"/>
+            <allow pkg="org.assertj"/>
+        </subpackage>
+
+        <subpackage name="application" strategyOnMismatch="disallowed">
+            <allow pkg="java"/>
+            <allow pkg="com.example.transfers.domain"/>
+            <allow pkg="com.example.transfers.application"/>
+            <allow class="org.springframework.stereotype.Service"/>
+            <allow class="org.springframework.transaction.annotation.Transactional"/>
+            <allow pkg="org.slf4j"/>
+            <allow pkg="org.junit"/>
+            <allow pkg="org.assertj"/>
+            <allow pkg="org.mockito"/>
         </subpackage>
     </subpackage>
 
