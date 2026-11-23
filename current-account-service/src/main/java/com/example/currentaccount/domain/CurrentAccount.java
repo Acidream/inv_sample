@@ -16,6 +16,7 @@ import java.util.UUID;
  *   <li>A debit is carried out if the balance after it is not below minus the overdraft limit.
  *   <li>A blocked account refuses transfers both ways. Incoming payments are still booked: the
  *       money has already arrived at the bank.
+ *   <li>Money coming in is refused if the balance would exceed {@link Money#MAX_BALANCE}.
  * </ul>
  */
 public final class CurrentAccount {
@@ -24,6 +25,7 @@ public final class CurrentAccount {
 
     public static final String BLOCKED_REASON = "account blocked";
     public static final String OVERDRAFT_EXCEEDED = "overdraft limit exceeded";
+    public static final String BALANCE_LIMIT_EXCEEDED = "balance limit exceeded";
 
     /** The result of an instruction: the answer, and the booking if money moved. */
     public record Decision(TransferAnswer answer, Optional<Booking> booking) {
@@ -84,14 +86,25 @@ public final class CurrentAccount {
         if (status == Status.BLOCKED) {
             return rejected(transferId, TransferAnswer.Direction.CREDIT, amount, BLOCKED_REASON, at);
         }
+        if (!canTake(amount)) {
+            return rejected(transferId, TransferAnswer.Direction.CREDIT, amount, BALANCE_LIMIT_EXCEEDED, at);
+        }
         balance = balance.add(amount.amount());
         return new Decision(TransferAnswer.carriedOut(id, transferId, TransferAnswer.Direction.CREDIT, amount, at),
                 Optional.of(booking(transferId, Booking.Type.TRANSFER_CREDIT, amount.amount(), at)));
     }
 
-    public Booking receive(String paymentId, Money amount, Instant at) {
+    /** @return the booking, or empty if the balance would exceed {@link Money#MAX_BALANCE} */
+    public Optional<Booking> receive(String paymentId, Money amount, Instant at) {
+        if (!canTake(amount)) {
+            return Optional.empty();
+        }
         balance = balance.add(amount.amount());
-        return booking(paymentId, Booking.Type.INCOMING_PAYMENT, amount.amount(), at);
+        return Optional.of(booking(paymentId, Booking.Type.INCOMING_PAYMENT, amount.amount(), at));
+    }
+
+    private boolean canTake(Money amount) {
+        return balance.add(amount.amount()).compareTo(Money.MAX_BALANCE) <= 0;
     }
 
     /** Blocking a blocked account only replaces the reason. */

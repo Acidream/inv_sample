@@ -153,8 +153,14 @@ public final class Account {
 
     // --- state --------------------------------------------------------------------------------
 
+    /** @throws BalanceLimitExceededException if the balance would exceed {@link Money#MAX_BALANCE} */
     private LedgerEntry book(EntryType type, Money signedAmount, String reference, Instant now) {
-        balance = balance.plus(signedAmount);
+        var after = balance.plus(signedAmount);
+        if (after.compareTo(Money.MAX_BALANCE) > 0) {
+            throw new BalanceLimitExceededException("Booking " + type + " " + signedAmount + " (" + reference
+                    + ") would take account " + id + " beyond the balance limit " + Money.MAX_BALANCE);
+        }
+        balance = after;
         // A clock behind the previous booker's must not book into the past.
         lastBookedAt = now.isAfter(lastBookedAt) ? now : lastBookedAt;
         lastEntryNo++;

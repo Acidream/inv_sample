@@ -77,13 +77,40 @@ class CurrentAccountTest {
     }
 
     @Test
+    void credit_BeyondMaxBalance_IsRejected() {
+        var account = account("0", "99999999999999999.00");
+        var decision = account.credit("t1", Money.of("1.00"), NOW);
+        assertThat(decision.answer().rejection()).hasValue(CurrentAccount.BALANCE_LIMIT_EXCEEDED);
+        assertThat(decision.booking()).isEmpty();
+        assertThat(account.balance()).isEqualByComparingTo("99999999999999999.00");
+    }
+
+    @Test
+    void credit_ReachingMaxBalance_IsCarriedOut() {
+        var account = account("0", "99999999999999999.00");
+        assertThat(account.credit("t1", Money.of("0.99"), NOW).answer().carriedOut()).isTrue();
+        assertThat(account.balance()).isEqualByComparingTo(Money.MAX_BALANCE);
+    }
+
+    @Test
+    void receive_BeyondMaxBalance_BooksNothing() {
+        var account = account("0", "99999999999999999.00");
+        assertThat(account.receive("p2", Money.of("1.00"), NOW)).isEmpty();
+        assertThat(account.balance()).isEqualByComparingTo("99999999999999999.00");
+    }
+
+    @Test
     void block_BlankReason_Throws() {
         assertThatThrownBy(() -> account("0", "0").block(" ")).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
+    void overdraftLimit_WholeEuros_NormalisesToCents() {
+        assertThat(CurrentAccount.overdraftLimit(new BigDecimal("5"))).hasToString("5.00");
+    }
+
+    @Test
     void overdraftLimit_NegativeOrSubCent_Throws() {
-        assertThat(CurrentAccount.overdraftLimit(new BigDecimal("5"))).isEqualByComparingTo("5.00");
         assertThatThrownBy(() -> CurrentAccount.overdraftLimit(new BigDecimal("-0.01")))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> CurrentAccount.overdraftLimit(new BigDecimal("0.001")))

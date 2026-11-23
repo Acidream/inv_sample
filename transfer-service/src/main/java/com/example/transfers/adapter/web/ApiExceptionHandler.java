@@ -3,6 +3,8 @@ package com.example.transfers.adapter.web;
 import com.example.transfers.application.TransferIdInUseException;
 import com.example.transfers.application.UnknownTransferException;
 import com.example.transfers.application.port.RequestLog.RequestLogUnavailableException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -16,6 +18,8 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
 @RestControllerAdvice
 class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 
+    private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
+
     /** Also the answer until an accepted request has been applied: the client polls. */
     @ExceptionHandler(UnknownTransferException.class)
     ProblemDetail unknownTransfer(UnknownTransferException e) {
@@ -27,9 +31,15 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_CONTENT, e.getMessage());
     }
 
-    /** Nothing was accepted; the client retries with the same transfer id. */
+    /**
+     * Not confirmed, which is not the same as not accepted: the send may still reach Kafka after the
+     * intake stopped waiting, and then it is applied. A retry with the same key is always safe.
+     */
     @ExceptionHandler(RequestLogUnavailableException.class)
     ProblemDetail requestLogUnavailable(RequestLogUnavailableException e) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, e.getMessage());
+        log.warn("Answering 503: {}", e.getMessage());
+        return ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE,
+                "Kafka did not confirm the request in time; it may or may not have been accepted."
+                + " Retry with the same Idempotency-Key: a retry never creates a second one.");
     }
 }

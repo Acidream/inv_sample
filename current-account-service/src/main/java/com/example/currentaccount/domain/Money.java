@@ -13,6 +13,11 @@ public record Money(BigDecimal amount) {
 
     public static final int SCALE = 2;
     public static final String CURRENCY = "EUR";
+    /**
+     * The largest balance the ledger can hold: {@code numeric(19, 2)}. A booking that would go beyond
+     * it is refused, rather than failing at the database and being retried without end (ADR 0007).
+     */
+    public static final BigDecimal MAX_BALANCE = new BigDecimal("99999999999999999.99");
 
     public Money {
         Objects.requireNonNull(amount, "amount");

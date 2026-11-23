@@ -3,6 +3,7 @@ package com.example.savings.domain;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -32,6 +33,16 @@ class AccountTest {
         assertThat(entry.amount()).isEqualTo(Money.of("5.50"));
         assertThat(entry.balanceAfter()).isEqualTo(Money.of("15.50"));
         assertThat(account.balance()).isEqualTo(Money.of("15.50"));
+    }
+
+    @Test
+    void deposit_BeyondMaxBalance_ThrowsBalanceLimitExceeded() {
+        account.deposit(Money.of("99999999999999999.00"), "p1", NOW);
+
+        assertThatThrownBy(() -> account.deposit(Money.of("1.00"), "p2", NOW))
+                .isInstanceOf(BalanceLimitExceededException.class);
+        assertThat(account.balance()).isEqualTo(Money.of("99999999999999999.00"));
+        assertThat(account.deposit(Money.of("0.99"), "p3", NOW).entryNo()).isEqualTo(2);
     }
 
     @Test
@@ -114,7 +125,7 @@ class AccountTest {
     }
 
     @Test
-    void payoutDueAfter_LastDayOfPayoutPeriod_IsTrue() {
+    void payoutDueAfter_MonthEnd_DependsOnPayoutFrequency() {
         var quarterly = Account.open(UUID.randomUUID(), UUID.randomUUID(),
                 new SavingsProduct("Q", 1, "Quarterly", new BigDecimal("0.0365"), PayoutFrequency.QUARTERLY), NOW,
                 BERLIN);

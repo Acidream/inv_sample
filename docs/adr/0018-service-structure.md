@@ -64,7 +64,8 @@ current-account-simulator/  plays the current account in local demos
 - An internal transfer is a saga across two ledgers with compensation (ADR 0015), not a local
   transaction. Each step is idempotent by transfer id, as in savings.
 - Finance gets postings from every ledger; `transfer-clearing` nets to zero per transfer *across*
-  services, which becomes a real reconciliation check.
+  services, which becomes a real reconciliation check once every ledger posts (the current account
+  doesn't yet, ADR 0021).
 - The technical building blocks (outbox and relay, idempotent consumer, `Money`) are copied into the
   transfer service rather than shared. With the current account service they would exist three
   times: that is the point to extract a technical library (no domain rules in it), not earlier.

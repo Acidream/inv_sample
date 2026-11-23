@@ -14,6 +14,8 @@ public record Money(BigDecimal amount) implements Comparable<Money> {
     public static final int SCALE = 2;
     public static final String CURRENCY = "EUR";
     public static final Money ZERO = new Money(BigDecimal.ZERO);
+    /** The largest balance the ledger can hold: {@code numeric(19, 2)}. */
+    public static final Money MAX_BALANCE = new Money(new BigDecimal("99999999999999999.99"));
 
     public Money {
         Objects.requireNonNull(amount, "amount");

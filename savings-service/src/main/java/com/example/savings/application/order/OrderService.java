@@ -80,6 +80,8 @@ public class OrderService {
     /**
      * Applies an order from the command log, in one transaction: decide it as of the time it was
      * placed, open the account on the accepted version, announce it and ask for the money.
+     *
+     * @throws OrderIdInUseException if the order id was already placed with different details
      */
     @Transactional
     public void place(String commandId, Order.Request request) {
@@ -89,10 +91,13 @@ public class OrderService {
         }
         var earlier = orders.find(request.orderId());
         if (earlier.isPresent()) {
+            // Different details: two orders under one key were accepted before either was applied. The
+            // second one's client was told it was accepted, so it is not dropped silently: the exception
+            // dead-letters the command for a person to look at.
             if (!earlier.get().request().sameOrderAs(request)) {
-                log.warn("Ignoring command {}: order {} was already placed with different details", commandId,
-                        request.orderId());
+                throw new OrderIdInUseException(request.orderId());
             }
+            log.info("Skipping command {}: order {} was already placed", commandId, request.orderId());
             return;
         }
         var product = products.onSale(request.productCode(), request.placedAt());

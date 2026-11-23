@@ -42,6 +42,14 @@ Feature: Opening current accounts, incoming payments and blocking (ADR 0021)
     When method post
     Then status 422
 
+  Scenario: a second opening with different details, arriving on the command log, is dead-lettered
+    # Two openings under one key can both pass the intake before either is applied; the second must
+    # not be dropped silently, its client was told it was accepted.
+    * def account = call read('common.feature') { overdraftLimit: '0.00' }
+    * hooks.sendOpening(account.accountId, hooks.uuid(), '100.00')
+    * def cause = hooks.awaitDeadLetter('current-account.commands.v1', account.accountId)
+    * match cause == 'com.example.currentaccount.application.AccountIdInUseException'
+
   Scenario: an incoming payment is booked once, however often it is sent
     * def account = call read('common.feature') { overdraftLimit: '0.00' }
     * def accountId = account.accountId
@@ -94,6 +102,22 @@ Feature: Opening current accounts, incoming payments and blocking (ADR 0021)
     And retry until responseStatus == 200
     When method get
     Then match response contains { status: 'REJECTED', rejectionReason: 'unknown account' }
+
+  Scenario: a payment that would take the balance beyond what the ledger holds is rejected
+    * def account = call read('common.feature') { overdraftLimit: '0.00', funds: '99999999999999999.00' }
+    Given path 'current-accounts', account.accountId, 'incoming-payments'
+    And header Idempotency-Key = hooks.uuid()
+    And request { amount: '1.00' }
+    When method post
+    Then status 202
+    * def paymentId = response.paymentId
+    Given path 'current-accounts', account.accountId, 'incoming-payments', paymentId
+    And retry until responseStatus == 200
+    When method get
+    Then match response contains { status: 'REJECTED', rejectionReason: 'balance limit exceeded' }
+    Given path 'current-accounts', account.accountId
+    When method get
+    Then match response.balance == '99999999999999999.00'
 
   Scenario: a blocked account shows nothing available until it is unblocked
     * def account = call read('common.feature') { overdraftLimit: '100.00', funds: '50.00' }

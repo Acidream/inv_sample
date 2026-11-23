@@ -36,6 +36,8 @@ public class KafkaTestSupport implements DisposableBean {
     public static final String TRANSFER_REQUESTS = "payments.transfer-requests.v1";
     public static final String TRANSFER_EVENTS = "payments.transfer-events.v1";
     public static final String TRANSFER_EVENT_DEAD_LETTERS = TRANSFER_EVENTS + ".DLT";
+    public static final String COMMANDS = "savings.commands.v1";
+    public static final String COMMAND_DEAD_LETTERS = COMMANDS + ".DLT";
     private static final Duration TIMEOUT = Duration.ofSeconds(20);
 
     private final KafkaProducer<String, byte[]> producer;
@@ -145,7 +147,7 @@ public class KafkaTestSupport implements DisposableBean {
     private void observe(KafkaConsumer<String, byte[]> consumer) {
         try (consumer) {
             consumer.subscribe(List.of(ACCOUNT_EVENTS, POSTINGS, TRANSFER_REQUESTS, DEAD_LETTERS,
-                    TRANSFER_EVENT_DEAD_LETTERS));
+                    TRANSFER_EVENT_DEAD_LETTERS, COMMAND_DEAD_LETTERS));
             while (running) {
                 for (var record : consumer.poll(Duration.ofMillis(100))) {
                     if (record.topic().equals(ACCOUNT_EVENTS)) {

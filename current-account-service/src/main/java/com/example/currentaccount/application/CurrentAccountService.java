@@ -113,7 +113,10 @@ public class CurrentAccountService {
 
     // --- applying commands ------------------------------------------------------------------------
 
-    /** Applies a command from the command log. */
+    /**
+     * Applies a command from the command log. An account id or payment id already in use with
+     * different details is a conflict a person must look at: the exception dead-letters the command.
+     */
     @Transactional
     public void apply(String commandId, Command command) {
         if (!processed.markProcessed("command:" + commandId)) {
@@ -131,11 +134,12 @@ public class CurrentAccountService {
     private void open(Command.Open open) {
         var existing = accounts.lock(open.accountId());
         if (existing.isPresent()) {
-            // Only possible if two different openings were accepted before either was applied.
+            // Different details: two openings under one key were accepted before either was applied.
+            // The second one's client was told it was accepted, so it is not dropped silently.
             if (!existing.get().openedAs(open.customerId(), open.overdraftLimit())) {
-                log.warn("Account {} is already open with different details; ignoring the second opening",
-                        open.accountId());
+                throw new AccountIdInUseException(open.accountId());
             }
+            log.info("Account {} is already open; skipping the repeated opening", open.accountId());
             return;
         }
         var account = CurrentAccount.open(open.accountId(), open.customerId(), open.overdraftLimit(),
@@ -161,8 +165,15 @@ public class CurrentAccountService {
             return;
         }
         var booking = account.get().receive(command.paymentId(), command.amount(), command.acceptedAt());
+        if (booking.isEmpty()) {
+            log.warn("Payment {} would take account {} beyond its balance limit; rejected", command.paymentId(),
+                    command.accountId());
+            payments.add(IncomingPayment.rejected(command.paymentId(), command.accountId(), command.amount(),
+                    CurrentAccount.BALANCE_LIMIT_EXCEEDED, command.acceptedAt()));
+            return;
+        }
         accounts.update(account.get());
-        bookings.add(booking);
+        bookings.add(booking.get());
         payments.add(IncomingPayment.booked(command.paymentId(), command.accountId(), command.amount(),
                 command.acceptedAt()));
     }

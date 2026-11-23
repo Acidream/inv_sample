@@ -3,7 +3,9 @@ package com.example.savings.adapter.messaging;
 import com.example.platform.messaging.DeadLetters;
 import com.example.savings.application.UnknownAccountException;
 import com.example.savings.application.UnknownTransferException;
+import com.example.savings.application.order.OrderIdInUseException;
 import com.example.savings.config.SavingsProperties;
+import com.example.savings.domain.BalanceLimitExceededException;
 import com.example.savings.domain.IllegalTransferException;
 import com.example.savings.domain.order.IllegalOrderTransitionException;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -19,7 +21,8 @@ class KafkaConfig {
 
     /**
      * Messages that can never succeed (unparseable, invalid, contradicting an earlier transfer, for
-     * an account or transfer savings doesn't have) are dead-lettered; everything else is retried
+     * an account or transfer savings doesn't have, beyond an account's balance limit, an order id
+     * already placed with different details) are dead-lettered; everything else is retried
      * without limit (ADR 0007, {@link DeadLetters}).
      */
     @Bean
@@ -29,7 +32,8 @@ class KafkaConfig {
         return DeadLetters.errorHandler(template, registry,
                 List.of(topics.paymentInstructions(), topics.savingsCommands(), topics.transferEvents()),
                 List.of(IllegalTransferException.class, UnknownAccountException.class,
-                        UnknownTransferException.class, IllegalOrderTransitionException.class));
+                        UnknownTransferException.class, IllegalOrderTransitionException.class,
+                        BalanceLimitExceededException.class, OrderIdInUseException.class));
     }
 
     /**

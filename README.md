@@ -68,8 +68,12 @@ would change the design.
   double-entry posting on logical book accounts (`customer:<id>`, `transfer-clearing`,
   `interest-expense`, `interest-payable`); Finance maps them to its chart of accounts and keeps the
   books. What Finance can reconcile against Savings: the customer lines of an account sum to that
-  account's ledger balance, and `transfer-clearing` nets to zero per transfer
-  ([0014](docs/adr/0014-double-entry-postings-for-finance.md)). A full double-entry core inside
+  account's ledger balance ([0014](docs/adr/0014-double-entry-postings-for-finance.md)).
+  `transfer-clearing` is meant to net to zero per transfer *across* the two ledgers, but only
+  savings publishes postings so far: savings' own lines net to zero only for a withdrawal the
+  current account refused and savings got back. That check becomes possible once the current
+  account publishes its side ([0018](docs/adr/0018-service-structure.md),
+  [0021](docs/adr/0021-current-account-service.md)). A full double-entry core inside
   Savings was considered and rejected as more than one product needs.
 - **The ledger is the system of record, not the Kafka log.** Replaying inputs is for recovery and
   verification; history is never re-booked by new code
@@ -299,11 +303,12 @@ Current accounts (`:8082`):
 | `GET` | `/current-accounts/{accountId}` | `OPEN` or `BLOCKED`, `balance`, `overdraftLimit`, `available`, `blockReason`; `404` until opened |
 | `GET` | `/current-accounts/{accountId}/bookings?limit=50` | newest first: `type` (`INCOMING_PAYMENT`, `TRANSFER_DEBIT`, `TRANSFER_CREDIT`), signed `amount`, `balanceAfter`, `reference` |
 | `POST` | `/current-accounts/{accountId}/incoming-payments` | `Idempotency-Key` header (per account), `{ amount }` → `202` + `Location` and `paymentId`; booked once per key; a different payment under the same key → `422` |
-| `GET` | `/current-accounts/{accountId}/incoming-payments/{paymentId}` | `BOOKED`, or `REJECTED` with `rejectionReason` (unknown account) |
+| `GET` | `/current-accounts/{accountId}/incoming-payments/{paymentId}` | `BOOKED`, or `REJECTED` with `rejectionReason` (unknown account, or the balance would exceed what the ledger holds) |
 | `PUT` / `DELETE` | `/current-accounts/{accountId}/block` | `{ reason }` blocks, `DELETE` unblocks → `202`; `404` for an account that isn't open |
 
 Errors are [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details. A `POST` without an
 `Idempotency-Key` is refused with `400`: the id of what it creates is derived from the key, so the
 same key always means the same resource ([ADR 0025](docs/adr/0025-post-with-an-idempotency-key.md)).
-When Kafka can't take a command, the request answers `503` and nothing was accepted; retry with the
-same key.
+When Kafka doesn't confirm a command in time, the request answers `503`. That means *not confirmed*,
+not *not accepted*: the command may still land and be applied, so retry with the same key, which never
+creates a second one.

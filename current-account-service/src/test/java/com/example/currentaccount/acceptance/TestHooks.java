@@ -9,6 +9,7 @@ import com.example.currentaccount.support.MutableClock;
 import com.example.events.common.v1.Money;
 import com.example.events.currentaccount.v1.CurrentAccountCommand;
 import com.example.events.currentaccount.v1.CurrentAccountEvent;
+import com.example.events.currentaccount.v1.OpenCurrentAccount;
 import com.example.events.currentaccount.v1.ReceivePayment;
 import com.example.events.payments.v1.CreditCurrentAccount;
 import com.example.events.payments.v1.CurrentAccountInstruction;
@@ -83,6 +84,19 @@ public final class TestHooks {
                 .setOccurredAt(now())
                 .setAccountId(accountId)
                 .setReceivePayment(ReceivePayment.newBuilder().setPaymentId("p".repeat(101)).setAmount(eur("1.00")))
+                .build();
+        kafka().send(COMMANDS, accountId, command.toByteArray());
+    }
+
+    /** An opening straight on the command log, as if accepted before an earlier one was applied. */
+    public static void sendOpening(String accountId, String customerId, String overdraftLimit) {
+        var command = CurrentAccountCommand.newBuilder()
+                .setCommandId(uuid())
+                .setOccurredAt(now())
+                .setAccountId(accountId)
+                .setOpenCurrentAccount(OpenCurrentAccount.newBuilder()
+                        .setCustomerId(customerId)
+                        .setOverdraftLimit(eur(overdraftLimit)))
                 .build();
         kafka().send(COMMANDS, accountId, command.toByteArray());
     }

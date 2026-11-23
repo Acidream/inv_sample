@@ -164,6 +164,26 @@ Feature: Orders open and fund savings accounts (ADR 0020)
     Then status 422
     And match response.detail contains 'already placed with different details'
 
+  Scenario: a different order under an id already placed, arriving on the command log, is dead-lettered
+    # Two orders under one key can both pass the intake before either is applied; the second must not be
+    # dropped silently, its client was told it was accepted.
+    * def orderKey = orderId
+    Given path 'orders'
+    And header Idempotency-Key = orderKey
+    And request order
+    When method post
+    Then status 202
+    * def orderId = response.orderId
+    Given path 'orders', orderId
+    And retry until responseStatus == 200
+    When method get
+    * hooks.placeOrderOnLog(orderId, customerId, '999.00', currentAccountId)
+    * def cause = hooks.awaitDeadLetter(orderId)
+    * match cause == 'com.example.savings.application.order.OrderIdInUseException'
+    Given path 'orders', orderId
+    When method get
+    Then match response.amount == '250.00'
+
   Scenario: an order that has not been applied yet is not found
     Given path 'orders', hooks.uuid()
     When method get

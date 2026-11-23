@@ -9,6 +9,8 @@ import com.example.events.payments.v1.TransferEvent;
 import com.example.events.payments.v1.TransferFailed;
 import com.example.events.payments.v1.TransferToCurrentAccount;
 import com.example.events.savings.v1.AccountEvent;
+import com.example.events.savings.v1.OpenAndFund;
+import com.example.events.savings.v1.SavingsCommand;
 import com.example.events.savings.v1.Posting;
 import com.example.savings.adapter.scheduling.InterestAccrualJob;
 import com.example.savings.support.KafkaTestSupport;
@@ -101,6 +103,26 @@ public final class TestHooks {
 
     public static void runInterestJob() {
         context.getBean(InterestAccrualJob.class).run();
+    }
+
+    /**
+     * An order straight on the command log, under an order id already in use: as if it had passed the
+     * intake before the first order was applied.
+     */
+    public static void placeOrderOnLog(String orderId, String customerId, String amount, String fromAccountId) {
+        var now = Instant.now();
+        var command = SavingsCommand.newBuilder()
+                .setCommandId(UUID.randomUUID().toString())
+                .setOccurredAt(com.google.protobuf.Timestamp.newBuilder().setSeconds(now.getEpochSecond()))
+                .setOpenAndFund(OpenAndFund.newBuilder()
+                        .setOrderId(orderId)
+                        .setCustomerId(customerId)
+                        .setProductCode("INSTANT_ACCESS")
+                        .setProductVersion(1)
+                        .setAmount(eur(amount))
+                        .setFromAccountId(fromAccountId))
+                .build();
+        kafka().send(KafkaTestSupport.COMMANDS, orderId, command.toByteArray());
     }
 
     // --- Payments team instructions ---------------------------------------------------------------
@@ -209,7 +231,7 @@ public final class TestHooks {
 
     /**
      * Waits until a message with this key was dead-lettered (an instruction: its account id; a transfer
-     * event: its transfer id); returns the DLT exception class.
+     * event: its transfer id; a command: its order id); returns the DLT exception class.
      */
     public static String awaitDeadLetter(String key) {
         var record = kafka().awaitDeadLetter(key);

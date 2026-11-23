@@ -53,8 +53,10 @@ Not done yet, and needed before a replay can be compared byte for byte:
 - A client can't learn the outcome from the `PUT` response; it reads the resource or the events.
   For opening an account that is natural anyway: funding it takes a transfer that may fail.
 - Commands for one id are ordered: the topics are keyed by order id and transfer id.
-- The intake writes to Kafka synchronously; when Kafka is down, the `PUT` fails with `503` and the
-  client retries with the same id. Nothing is half-done.
+- The intake writes to Kafka synchronously; when Kafka doesn't confirm in time, the request fails
+  with `503` and the client retries with the same id. A `503` means *not confirmed*, not *not
+  accepted*: the producer keeps trying after the intake stops waiting, so the command may still land
+  and be applied. Nothing is half-done, and the retry finds what was applied.
 
 ## Alternatives considered
 

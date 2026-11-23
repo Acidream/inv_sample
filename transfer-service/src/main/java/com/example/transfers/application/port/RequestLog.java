@@ -8,7 +8,10 @@ import com.example.transfers.domain.Transfer;
  */
 public interface RequestLog {
 
-    /** @throws RequestLogUnavailableException if the request couldn't be stored; the client retries */
+    /**
+     * @throws RequestLogUnavailableException if the log didn't confirm the request in time; it may still
+     *                                        be stored and applied, so the client retries with the same id
+     */
     void append(Transfer.Request request);
 
     class RequestLogUnavailableException extends RuntimeException {

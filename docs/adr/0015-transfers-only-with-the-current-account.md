@@ -74,7 +74,8 @@ sequenceDiagram
 - Removed: `Hold`, the hold state machine, `HoldExpiryJob`, the 72 h TTL, late confirmations,
   `savings_negative_balance_total` and its alert.
 - Money in flight between current account and savings sits on the `transfer-clearing` book account
-  (ADR 0014); in a healthy system it nets to zero per transfer.
+  (ADR 0014); in a healthy system it nets to zero per transfer, counting both ledgers' postings
+  (the current account doesn't post yet, ADR 0021).
 - Savings depends on Payments to compensate a withdrawal the current account refused; until the
   `TransferReturned` arrives, the money is on `transfer-clearing`. Payments' daily reconciliation
   catches transfers stuck there.

@@ -11,7 +11,8 @@ public interface CommandLog {
     /**
      * Appends an order and returns once the log has stored it.
      *
-     * @throws CommandLogUnavailableException if it couldn't be stored; the client retries with the same id
+     * @throws CommandLogUnavailableException if the log didn't confirm it in time; it may still be stored
+     *                                        and applied, so the client retries with the same id
      */
     void openAndFund(String commandId, Order.Request request);
 

@@ -28,7 +28,13 @@ public record IncomingPayment(String paymentId, UUID accountId, Money amount, St
 
     /** The account doesn't exist: in a real bank the money goes back to the sender. */
     public static IncomingPayment toUnknownAccount(String paymentId, UUID accountId, Money amount, Instant at) {
-        return new IncomingPayment(paymentId, accountId, amount, Status.REJECTED, TransferAnswer.UNKNOWN_ACCOUNT, at);
+        return rejected(paymentId, accountId, amount, TransferAnswer.UNKNOWN_ACCOUNT, at);
+    }
+
+    /** Not booked, e.g. the account's balance would exceed its limit; the money goes back to the sender. */
+    public static IncomingPayment rejected(String paymentId, UUID accountId, Money amount, String reason,
+            Instant at) {
+        return new IncomingPayment(paymentId, accountId, amount, Status.REJECTED, Objects.requireNonNull(reason), at);
     }
 
     public Optional<String> rejection() {
