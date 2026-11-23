@@ -32,7 +32,7 @@ class PayoutFrequencyTest {
     }
 
     @Test
-    void endsPeriodOn_LastDayOfPeriod_IsTrue() {
+    void endsPeriodOn_DaysInAndAtEndOfPeriod_IsTrueOnlyOnLastDay() {
         assertThat(PayoutFrequency.MONTHLY.endsPeriodOn(LocalDate.of(2026, 4, 30))).isTrue();
         assertThat(PayoutFrequency.MONTHLY.endsPeriodOn(LocalDate.of(2026, 4, 29))).isFalse();
         assertThat(PayoutFrequency.QUARTERLY.endsPeriodOn(LocalDate.of(2026, 4, 30))).isFalse();

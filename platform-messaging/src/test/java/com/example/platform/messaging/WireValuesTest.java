@@ -45,7 +45,13 @@ class WireValuesTest {
     void timestamp_Instant_RoundTrips() {
         var instant = Instant.parse("2026-11-23T09:15:00.123456789Z");
         assertThat(WireValues.instant(WireValues.timestamp(instant), "occurred_at")).isEqualTo(instant);
-        assertThatThrownBy(() -> WireValues.instant(null, "occurred_at")).hasMessage("Missing occurred_at");
+    }
+
+    @Test
+    void instant_Missing_ThrowsInvalidMessage() {
+        assertThatThrownBy(() -> WireValues.instant(null, "occurred_at"))
+                .isInstanceOf(InvalidMessageException.class)
+                .hasMessage("Missing occurred_at");
     }
 
     @Test

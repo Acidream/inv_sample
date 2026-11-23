@@ -62,12 +62,15 @@ class OrderTest {
     }
 
     @Test
-    void funded_MatchingDepositOrFailure_DecidesOutcome() {
+    void funded_MatchingDepositReportedTwice_IsFunded() {
         var funded = Order.place(request, Optional.of(V2));
         funded.funded(deposit(funded, request.amount()));
         funded.funded(deposit(funded, request.amount()));
         assertThat(funded.status()).isEqualTo(Order.Status.FUNDED);
+    }
 
+    @Test
+    void fundingFailed_NoDeposit_RecordsReason() {
         var failed = Order.place(request, Optional.of(V2));
         failed.fundingFailed("DEBIT_REJECTED: overdraft limit exceeded", Optional.empty());
         assertThat(failed.status()).isEqualTo(Order.Status.FUNDING_FAILED);

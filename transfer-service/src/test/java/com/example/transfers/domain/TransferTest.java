@@ -101,22 +101,31 @@ class TransferTest {
     }
 
     @Test
-    void answer_WrongStateOrLedger_ThrowsIllegalTransferState() {
+    void credited_BeforeDebit_ThrowsIllegalTransferState() {
         var transfer = transfer(current, savings);
         assertThatThrownBy(() -> transfer.credited(Ledger.SAVINGS, savings.accountId()))
                 .isInstanceOf(IllegalTransferStateException.class);
+    }
 
+    @Test
+    void debited_ByWrongLedger_ThrowsIllegalTransferState() {
+        var transfer = transfer(current, savings);
         transfer.start(Optional.of(current), Optional.of(savings));
         assertThatThrownBy(() -> transfer.debited(Ledger.SAVINGS, current.accountId()))
                 .isInstanceOf(IllegalTransferStateException.class);
+    }
 
+    @Test
+    void creditRefused_BySavings_ThrowsIllegalTransferState() {
+        var transfer = transfer(current, savings);
+        transfer.start(Optional.of(current), Optional.of(savings));
         transfer.debited(Ledger.CURRENT_ACCOUNT, current.accountId());
         assertThatThrownBy(() -> transfer.creditRefused(Ledger.SAVINGS, savings.accountId(), "no"))
                 .isInstanceOf(IllegalTransferStateException.class);
     }
 
     @Test
-    void answer_FromAnotherAccount_ThrowsIllegalTransferState() {
+    void debited_AnotherAccount_ThrowsIllegalTransferState() {
         var transfer = transfer(current, savings);
         transfer.start(Optional.of(current), Optional.of(savings));
         var otherCurrent = UUID.randomUUID();
@@ -125,9 +134,16 @@ class TransferTest {
                 .isInstanceOf(IllegalTransferStateException.class)
                 .hasMessageContaining(otherCurrent.toString());
         assertThat(transfer.status()).isEqualTo(Transfer.Status.DEBITING);
+    }
 
+    @Test
+    void credited_AnotherAccount_ThrowsIllegalTransferState() {
+        var transfer = transfer(current, savings);
+        transfer.start(Optional.of(current), Optional.of(savings));
         transfer.debited(Ledger.CURRENT_ACCOUNT, current.accountId());
+
         assertThatThrownBy(() -> transfer.credited(Ledger.SAVINGS, UUID.randomUUID()))
                 .isInstanceOf(IllegalTransferStateException.class);
+        assertThat(transfer.status()).isEqualTo(Transfer.Status.CREDITING);
     }
 }
