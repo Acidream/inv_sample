@@ -8,8 +8,7 @@ import "google/protobuf/timestamp.proto";
 option java_multiple_files = true;
 option java_package = "com.example.events.currentaccount.v1";
 
-// Topic: current-account.events.v1 (owned by the Current Account team; played by
-//        current-account-simulator and the tests until that service exists).
+// Topic: current-account.events.v1 (owned by the Current Account team; published by current-account-service).
 // Key:   account_id. Delivery is at-least-once: consumers must de-duplicate on event_id.
 message CurrentAccountEvent {
   string event_id = 1;

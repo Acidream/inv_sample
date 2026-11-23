@@ -33,3 +33,5 @@ jobs:
             savings-service/build/karate-reports/
             transfer-service/build/reports/
             transfer-service/build/karate-reports/
+            current-account-service/build/reports/
+            current-account-service/build/karate-reports/

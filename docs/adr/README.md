@@ -25,3 +25,4 @@ Format: [Michael Nygard](https://cognitect.com/blog/2011/11/15/documenting-archi
 | [0018](0018-service-structure.md) | Service structure: savings, transfers, current account | Accepted |
 | [0019](0019-state-changes-through-a-command-log.md) | State changes only through a command log; REST for queries | Accepted |
 | [0020](0020-open-and-fund-a-savings-product.md) | Opening a savings product: one order that opens the account, then asks for the money | Accepted |
+| [0021](0021-current-account-service.md) | The current account service: overdraft, blocking, incoming payments | Accepted |

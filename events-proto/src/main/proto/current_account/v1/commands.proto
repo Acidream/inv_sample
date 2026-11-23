@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package current_account.v1;
+
+import "common.proto";
+import "google/protobuf/timestamp.proto";
+
+option java_multiple_files = true;
+option java_package = "com.example.events.currentaccount.v1";
+
+// Topic: current-account.commands.v1 (owned by the Current Account team; its command log, ADR 0019).
+// Key:   account_id, so the commands for one account are applied in the order they were accepted.
+// Written by the current account REST intake.
+message CurrentAccountCommand {
+  string command_id = 1;                       // unique per message, used for de-duplication
+  google.protobuf.Timestamp occurred_at = 2;   // when the request was accepted; bookings are dated then
+  string account_id = 3;
+
+  oneof payload {
+    OpenCurrentAccount open_current_account = 10;
+    ReceivePayment receive_payment = 11;
+    BlockAccount block_account = 12;
+    UnblockAccount unblock_account = 13;
+  }
+}
+
+// Opens the account with a zero balance. The account id is chosen by the client.
+message OpenCurrentAccount {
+  string customer_id = 1;
+  common.v1.Money overdraft_limit = 2;         // how far the balance may go below zero; "0.00" for none
+}
+
+// Money arriving from outside the bank (a salary, a payment from someone else). Applied once per payment_id.
+message ReceivePayment {
+  string payment_id = 1;
+  common.v1.Money amount = 2;
+}
+
+// A blocked account refuses transfers both ways; incoming payments are still booked.
+message BlockAccount {
+  string reason = 1;
+}
+
+message UnblockAccount {
+}

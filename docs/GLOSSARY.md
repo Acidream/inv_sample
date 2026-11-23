@@ -12,13 +12,18 @@ Terms as they are used in code, events and docs. If code and glossary disagree, 
 | **Ledger** | Append-only list of bookings per account. Never updated or deleted; corrections are new entries. | `domain.LedgerEntry`, `ledger_entry` |
 | **Ledger entry** | One booking: entry number, type (DEPOSIT, WITHDRAWAL, WITHDRAWAL_RETURN, INTEREST), signed amount, balance after, business reference, booking time. | `LedgerEntry` |
 | **Entry number** | Numbers an account's ledger entries 1, 2, 3, ... in booking order. With the booking time, which never goes backwards on one account, it defines the order of the ledger. | `LedgerEntry.entryNo` |
-| **Current account** | The customer's main account at the bank, owned by another team. The only place savings money comes from or goes to. | contract only: `current_account.v1`; played by `current-account-simulator` |
+| **Current account** | The customer's main account at the bank, owned by the Current Account team. The only place savings money comes from or goes to. Its balance may go below zero down to the overdraft limit. | `current-account-service`, `domain.CurrentAccount` |
+| **Overdraft limit** | How far a current account's balance may go below zero. A debit that would go further is rejected ("overdraft limit exceeded"). Set when the account is opened. | `CurrentAccount.overdraftLimit()` |
+| **Available** | What a current account can still spend: balance plus the unused overdraft; zero while blocked. | `CurrentAccount.available()` |
+| **Blocked** | A current account that refuses transfers both ways ("account blocked"); incoming payments are still booked. | `CurrentAccount.Status.BLOCKED` |
+| **Incoming payment** | Money arriving at a current account from outside the bank, e.g. a salary, under a payment id the sender chose. Booked once. | `IncomingPayment`, `current_account.v1.ReceivePayment` |
+| **Transfer answer** | The current account's answer to one instruction of the transfer service, carried out or rejected; kept so the same transfer is answered once. | `TransferAnswer`, `transfer_answer` |
 | **Payments** | The team that orchestrates transfers between current account and savings, and makes external payments from the current account. Owns the transfer service. | `transfer-service`, `payments.v1` |
 | **Transfer service** | Moves money between two accounts of the same customer as a saga across their ledgers. Knows accounts, not products. | `transfer-service`, `Transfer` |
 | **Transfer request** | Asks the transfer service to move an amount from one account to another, under a transfer id the requester chose. | `payments.v1.TransferRequest` |
 | **Account directory** | The transfer service's list of known accounts (owner, ledger), built from `AccountOpened` and `CurrentAccountOpened` events. | `known_account`, `AccountDirectory` |
 | **Order** | A customer's request to open a savings account on a product version and fund it from their current account. `REJECTED`, `FUNDING`, `FUNDED` or `FUNDING_FAILED`. | `domain.order.Order`, `savings_order` |
-| **Command log** | A service's own input topic. Every state change starts as a message there; REST only appends to it. | `savings.commands.v1`, `payments.transfer-requests.v1` |
+| **Command log** | A service's own input topic. Every state change starts as a message there; REST only appends to it. | `savings.commands.v1`, `payments.transfer-requests.v1`, `current-account.commands.v1` |
 | **Payment instruction** | A message from Payments: TransferFromCurrentAccount, TransferToCurrentAccount or TransferReturned. | `payments.v1.PaymentInstruction`, `application.PaymentInstruction` |
 | **Transfer** | One movement between current account and savings, identified by a `transferId` chosen by Payments. States: IN COMPLETED; OUT COMPLETED, REJECTED or RETURNED. | `domain.Transfer`, `transfer` |
 | **Deposit** | Transfer in. The current account was already debited; Savings credits at once. | `Account.deposit` |

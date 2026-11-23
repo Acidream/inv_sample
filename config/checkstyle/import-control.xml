@@ -15,6 +15,7 @@
 
     <subpackage name="savings">
         <disallow pkg="com.example.transfers"/>
+        <disallow pkg="com.example.currentaccount"/>
         <disallow pkg="jakarta.persistence"/>
         <disallow pkg="org.hibernate"/>
         <disallow pkg="org.springframework.data"/>
@@ -52,6 +53,7 @@
 
     <subpackage name="transfers">
         <disallow pkg="com.example.savings"/>
+        <disallow pkg="com.example.currentaccount"/>
 
         <subpackage name="domain" strategyOnMismatch="disallowed">
             <allow pkg="java"/>
@@ -64,6 +66,30 @@
             <allow pkg="java"/>
             <allow pkg="com.example.transfers.domain"/>
             <allow pkg="com.example.transfers.application"/>
+            <allow class="org.springframework.stereotype.Service"/>
+            <allow class="org.springframework.transaction.annotation.Transactional"/>
+            <allow pkg="org.slf4j"/>
+            <allow pkg="org.junit"/>
+            <allow pkg="org.assertj"/>
+            <allow pkg="org.mockito"/>
+        </subpackage>
+    </subpackage>
+
+    <subpackage name="currentaccount">
+        <disallow pkg="com.example.savings"/>
+        <disallow pkg="com.example.transfers"/>
+
+        <subpackage name="domain" strategyOnMismatch="disallowed">
+            <allow pkg="java"/>
+            <allow pkg="com.example.currentaccount.domain"/>
+            <allow pkg="org.junit"/>
+            <allow pkg="org.assertj"/>
+        </subpackage>
+
+        <subpackage name="application" strategyOnMismatch="disallowed">
+            <allow pkg="java"/>
+            <allow pkg="com.example.currentaccount.domain"/>
+            <allow pkg="com.example.currentaccount.application"/>
             <allow class="org.springframework.stereotype.Service"/>
             <allow class="org.springframework.transaction.annotation.Transactional"/>
             <allow pkg="org.slf4j"/>

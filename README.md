@@ -1,8 +1,8 @@
 # savings-platform
 
-Savings products in an event-driven architecture. A customer orders a savings product and funds it
-from their current account. The transfer service moves the money between the two ledgers, interest
-accrues daily and is paid per the product's payout period. Built to be **correct and auditable**
+Savings products and current accounts in an event-driven architecture. A customer orders a savings
+product and funds it from their current account. The transfer service moves the money between the
+two ledgers, interest accrues daily and is paid per the product's payout period. Built to be **correct and auditable**
 first, and as simple as that allows.
 
 ## The big picture
@@ -18,10 +18,14 @@ flowchart LR
         TR[(payments.transfer-requests.v1)] --> TS[transfer saga<br/>account directory]
         TS --> TDB[(Postgres)]
     end
-    CA[current account<br/>simulated]
+    subgraph C [current-account-service]
+        CC[(current-account.commands.v1)] --> CA[accounts · ledger<br/>overdraft · blocking]
+        CA --> CDB[(Postgres)]
+    end
 
     App -- "PUT /orders/{id} · GET" --> S
     App -- "PUT /transfers/{id} · GET" --> T
+    App -- "PUT /current-accounts/{id} · GET" --> C
     SA -- "TransferRequest<br/>(fund an order)" --> TR
     TS -- "payments.savings-instructions.v1" --> SA
     SA -- "savings.account-events.v1" --> TS
@@ -39,8 +43,10 @@ Three services, each owning its data, connected only through Kafka contracts
   ([0020](docs/adr/0020-open-and-fund-a-savings-product.md)).
 - **transfer-service** moves money between two accounts of the same customer as a saga with
   compensation. It knows accounts (owner, ledger) from the ledgers' events, never products.
-- **The current account** isn't built yet. Its contract is, and `current-account-simulator` and the
-  tests play it.
+- **current-account-service** keeps current accounts and their ledger: balance, overdraft limit,
+  blocking, incoming payments from outside the bank. It answers the transfer service's debits and
+  credits, and decides on its own rules whether money may leave
+  ([0021](docs/adr/0021-current-account-service.md)).
 
 Every state change starts as a message on a service's own input topic. REST accepts commands into
 that log (`202 Accepted`) and answers queries, so a service's inputs can be replayed
@@ -86,6 +92,9 @@ would change the design.
   debited first, then the target credited. If the current account refuses a credit, savings gets the
   money back. A request for an account the transfer service doesn't know yet waits for its opening
   event, and fails after 10 minutes.
+- **Current accounts**: opened with an overdraft limit. Incoming payments (a salary) are booked
+  once per payment id. A debit is carried out if the balance stays within the overdraft limit,
+  otherwise rejected. A blocked account refuses transfers both ways.
 - **Savings balances never go negative**: a withdrawal is debited at once if the balance allows
   it, otherwise rejected.
 - **Interest**: ACT/365 on each day's closing balance, accrued nightly with sub-cent precision,
@@ -125,9 +134,13 @@ sequenceDiagram
 - **An account keeps its product version's terms for life**: new rates apply to new accounts only.
   Products differ in rate and payout frequency, not yet in notice periods, terms or rate tiers
   ([0017](docs/adr/0017-savings-products.md)).
-- **Replay is not complete yet.** Payment instructions are booked at processing time, and event
-  ids are random, and interest runs on the wall clock
+- **Replay is not complete yet.** Savings books payment instructions at processing time (the
+  current account books them as of the instruction), event ids are random, and interest runs on
+  the wall clock
   ([0019](docs/adr/0019-state-changes-through-a-command-log.md) lists what's missing).
+- **The current account is a ledger, not a bank account product**: no overdraft interest, fees,
+  statements, limit changes or postings for Finance yet
+  ([0021](docs/adr/0021-current-account-service.md)).
 - **One currency (EUR), one business time zone (Europe/Berlin)**; no taxes, campaigns, account
   closing or authentication ([0001](docs/adr/0001-scope-savings-only.md)).
 
@@ -139,12 +152,13 @@ sequenceDiagram
 | Replayable inputs | State changes only through each service's command log; REST accepts (`202`) and queries; ids chosen by the client | [0019](docs/adr/0019-state-changes-through-a-command-log.md) |
 | Opening a product | One order: open the account on the accepted terms, then request the money; ids derived from the order | [0020](docs/adr/0020-open-and-fund-a-savings-product.md) |
 | Distributed workflow | Transfers as a saga with one compensating step; why no holds | [0015](docs/adr/0015-transfers-only-with-the-current-account.md) |
+| Whose rule is it | The current account decides on overdraft and blocking; the transfer service only learns the answer | [0021](docs/adr/0021-current-account-service.md) |
 | Exact money | `BigDecimal` value object, strings on the wire, rounding (down) only at payout | [0004](docs/adr/0004-money-and-append-only-ledger.md) |
 | Auditability | Append-only ledger with `balance_after`; daily accrual rows | [0004](docs/adr/0004-money-and-append-only-ledger.md), [0010](docs/adr/0010-interest-accrual-and-payout.md) |
 | Books that balance | Every booking published as a double-entry posting, balanced by construction, value-dated | [0014](docs/adr/0014-double-entry-postings-for-finance.md) |
-| No lost or phantom events | Transactional outbox, single ordered relay, in both services | [0006](docs/adr/0006-transactional-outbox.md) |
+| No lost or phantom events | Transactional outbox, single ordered relay, in every service | [0006](docs/adr/0006-transactional-outbox.md) |
 | At-least-once delivery | De-duplication by message id and by transfer id in the business transaction; retries; dead-letter topics | [0007](docs/adr/0007-idempotent-consumer-and-dead-letters.md) |
-| Concurrency | Per-account ordering via partition key, optimistic locking, DB constraints, per-account entry numbers; advisory locks so a request and its account's opening event can't miss each other | [0008](docs/adr/0008-ordering-and-concurrency.md), [0011](docs/adr/0011-ledger-partitioning-and-keyset-pagination.md) |
+| Concurrency | Per-account ordering via partition key, optimistic locking, DB constraints, per-account entry numbers; advisory locks so a request and its account's opening event can't miss each other; row locks on current accounts | [0008](docs/adr/0008-ordering-and-concurrency.md), [0011](docs/adr/0011-ledger-partitioning-and-keyset-pagination.md) |
 | Big tables | Monthly partitions, one composite index, keyset pagination | [0011](docs/adr/0011-ledger-partitioning-and-keyset-pagination.md) |
 | Products | Immutable product versions from a catalogue; accounts keep theirs; terms composed, not subclassed | [0017](docs/adr/0017-savings-products.md) |
 | Contracts | Protobuf envelope with `oneof`, additive evolution, anti-corruption layer | [0005](docs/adr/0005-protobuf-event-contracts.md) |
@@ -162,7 +176,7 @@ Micrometer/Prometheus/Grafana · JUnit 6 · AssertJ · Mockito · Testcontainers
 Checkstyle · GitHub Actions
 
 ```
-./gradlew build          # Checkstyle, unit, architecture and acceptance tests of both services (needs Docker)
+./gradlew build          # Checkstyle, unit, architecture and acceptance tests of all three services (needs Docker)
 ```
 
 ## Repository layout
@@ -178,7 +192,10 @@ transfer-service/
   domain/                   Transfer (the saga), Step, KnownAccount, Money
   application/              TransferService and its ports
   adapter/                  web · messaging (listeners, outbox) · persistence (JDBC) · scheduling
-current-account-simulator/  CLI that plays the current account locally
+current-account-service/
+  domain/                   CurrentAccount, Booking, TransferAnswer, IncomingPayment, Money
+  application/              CurrentAccountService and its ports
+  adapter/                  web · messaging (listeners, command log, outbox) · persistence (JDBC)
 ops/                        Prometheus config and alerts, Grafana provisioning and dashboard
 config/checkstyle/          code style and import-control.xml (which layer and service may import what)
 docs/                       ADRs and glossary
@@ -201,26 +218,35 @@ Transfers:
 
 - [transfers.feature](transfer-service/src/test/resources/acceptance/transfers.feature): both directions, rejected debit, refused credit and its return, waiting for an account, timeouts, ownership, idempotent `PUT`, reused transfer id → DLT
 
+Current accounts:
+
+- [accounts.feature](current-account-service/src/test/resources/acceptance/accounts.feature): opening, incoming payments booked once, unknown accounts, blocking and unblocking, validation
+- [transfers.feature](current-account-service/src/test/resources/acceptance/transfers.feature): debits within and beyond the overdraft, credits, blocked accounts, instructions answered once, reused transfer id → DLT
+
 ## Running it locally
 
 ```bash
 ./gradlew bootJar
 docker compose up --build
-./gradlew -q :current-account-simulator:run --args="serve"       # in a second terminal: plays the current account
 ```
 
 | What | Where |
 |---|---|
 | Savings API docs | http://localhost:8080/swagger-ui.html |
 | Transfers API docs | http://localhost:8081/swagger-ui.html |
+| Current accounts API docs | http://localhost:8082/swagger-ui.html |
 | Prometheus (alerts) | http://localhost:9090/alerts |
 | Grafana (dashboard "Savings") | http://localhost:3000 |
 
-Order a product and fund it, then move money back:
+Open a current account and receive a salary, order a product funded from it, then move money back:
 
 ```bash
 CUSTOMER=3f2b8c1a-5d4e-4f6a-9b7c-1a2b3c4d5e6f
-CURRENT=$(./gradlew -q :current-account-simulator:run --args="open $CUSTOMER" | sed -n 's/currentAccountId=//p')
+CURRENT=$(uuidgen)
+curl -s -X PUT localhost:8082/current-accounts/$CURRENT -H 'Content-Type: application/json' \
+  -d "{\"customerId\":\"$CUSTOMER\",\"overdraftLimit\":\"200.00\"}"
+curl -s -X PUT localhost:8082/current-accounts/$CURRENT/incoming-payments/salary-1 -H 'Content-Type: application/json' \
+  -d '{"amount":"1000.00"}'
 
 ORDER=$(uuidgen)
 curl -s -X PUT localhost:8080/orders/$ORDER -H 'Content-Type: application/json' \
@@ -233,7 +259,12 @@ curl -s -X PUT localhost:8081/transfers/tr-$(uuidgen) -H 'Content-Type: applicat
 
 curl -s localhost:8080/accounts/$SAVINGS
 curl -s localhost:8080/accounts/$SAVINGS/transactions
+curl -s localhost:8082/current-accounts/$CURRENT/bookings   # salary, -250.00 for the order, +100.00 back
 ```
+
+An order above the current account's balance plus overdraft ends `FUNDING_FAILED` with
+"overdraft limit exceeded". Block the account (`PUT .../block`) and a transfer to it fails with
+`CREDIT_REFUSED`, its money back in savings.
 
 ## REST API
 
@@ -253,6 +284,17 @@ Transfers (`:8081`):
 |---|---|---|
 | `PUT` | `/transfers/{transferId}` | `{ customerId, fromAccountId, toAccountId, amount: "100.00" }` → `202` + `Location`. Same idempotency rules as orders |
 | `GET` | `/transfers/{transferId}` | `AWAITING_ACCOUNTS`, `DEBITING`, `CREDITING`, `RETURNING`, `COMPLETED` or `FAILED` with `failureReason` and `failureDetail` |
+
+Current accounts (`:8082`):
+
+| Method | Path | |
+|---|---|---|
+| `PUT` | `/current-accounts/{accountId}` | `{ customerId, overdraftLimit: "200.00" }` → `202` + `Location`, status `RECEIVED`. Same idempotency rules as orders |
+| `GET` | `/current-accounts/{accountId}` | `OPEN` or `BLOCKED`, `balance`, `overdraftLimit`, `available`, `blockReason`; `404` until opened |
+| `GET` | `/current-accounts/{accountId}/bookings?limit=50` | newest first: `type` (`INCOMING_PAYMENT`, `TRANSFER_DEBIT`, `TRANSFER_CREDIT`), signed `amount`, `balanceAfter`, `reference` |
+| `PUT` | `/current-accounts/{accountId}/incoming-payments/{paymentId}` | `{ amount }` → `202`; booked once per payment id; a different payment under the same id → `422` |
+| `GET` | `/current-accounts/{accountId}/incoming-payments/{paymentId}` | `BOOKED`, or `REJECTED` with `rejectionReason` (unknown account) |
+| `PUT` / `DELETE` | `/current-accounts/{accountId}/block` | `{ reason }` blocks, `DELETE` unblocks → `202`; `404` for an account that isn't open |
 
 Errors are [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details. When Kafka can't take a
 command, `PUT` answers `503` and nothing was accepted; retry with the same id.
