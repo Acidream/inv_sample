@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="710" viewBox="0 0 1100 710" role="img" aria-labelledby="title">
+  <title id="title">The big picture: services, existing and planned, and the requests between them</title>
+  <style>
+    svg { --fg: #1f2328; --muted: #59636e; --rest: #6e7781; --kafka: #0969da; --box: #f6f8fa; --edge: #d0d7de; --plan: #8c959f; }
+    @media (prefers-color-scheme: dark) {
+      svg { --fg: #e6edf3; --muted: #9198a1; --rest: #8b949e; --kafka: #4493f8; --box: #151b23; --edge: #3d444d; --plan: #6e7681; }
+    }
+    text { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; fill: var(--fg); font-size: 13px; }
+    .title { font-size: 14px; font-weight: 600; }
+    .muted { fill: var(--muted); font-size: 12px; }
+    .code { font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace; font-size: 11px; fill: var(--muted); }
+    .tag { font-size: 10px; font-weight: 600; letter-spacing: 0.08em; fill: var(--plan); }
+    .box { fill: var(--box); stroke: var(--edge); stroke-width: 1.5; }
+    .planbox { fill: none; stroke: var(--plan); stroke-width: 1.5; stroke-dasharray: 6 4; }
+    .db { fill: none; stroke: var(--edge); }
+    .rest { stroke: var(--rest); stroke-width: 1.5; fill: none; marker-end: url(#a-rest); }
+    .kafka { stroke: var(--kafka); stroke-width: 2.5; fill: none; marker-end: url(#a-kafka); }
+    .plan { stroke: var(--plan); stroke-width: 1.5; stroke-dasharray: 6 4; fill: none; marker-end: url(#a-plan); }
+    .m-rest { fill: var(--rest); } .m-kafka { fill: var(--kafka); } .m-plan { fill: var(--plan); }
+  </style>
+  <defs>
+    <marker id="a-rest" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="m-rest" d="M0 0L10 5L0 10z"/></marker>
+    <marker id="a-kafka" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path class="m-kafka" d="M0 0L10 5L0 10z"/></marker>
+    <marker id="a-plan" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="m-plan" d="M0 0L10 5L0 10z"/></marker>
+  </defs>
+
+  <!-- customer app and planned gateway -->
+  <rect class="box" x="470" y="10" width="160" height="34" rx="17"/>
+  <text x="550" y="32" text-anchor="middle" class="title">Customer app</text>
+  <line class="plan" x1="550" y1="44" x2="550" y2="74"/>
+  <rect class="planbox" x="20" y="76" width="1060" height="44" rx="6"/>
+  <text x="40" y="103">API gateway · validates the JWT, takes the customer id from the token</text>
+  <text x="1062" y="103" text-anchor="end" class="tag">PLANNED</text>
+
+  <!-- REST into the services -->
+  <line class="rest" x1="135" y1="120" x2="135" y2="188"/>
+  <text x="145" y="150" class="code">/products · /orders</text>
+  <text x="145" y="166" class="code">/accounts/…/transactions</text>
+  <line class="rest" x1="550" y1="120" x2="550" y2="188"/>
+  <text x="560" y="158" class="code">/transfers</text>
+  <line class="rest" x1="965" y1="120" x2="965" y2="188"/>
+  <text x="955" y="150" text-anchor="end" class="code">/current-accounts</text>
+  <text x="955" y="166" text-anchor="end" class="code">…/incoming-payments · …/block</text>
+
+  <!-- the three services -->
+  <rect class="box" x="20" y="190" width="230" height="200" rx="8"/>
+  <text x="36" y="218" class="title">savings-service</text>
+  <text x="36" y="237" class="muted">:8080</text>
+  <text x="36" y="270">products · orders</text>
+  <text x="36" y="291">accounts · ledger</text>
+  <text x="36" y="312">interest · postings</text>
+  <rect class="db" x="36" y="352" width="72" height="22" rx="11"/>
+  <text x="72" y="367" text-anchor="middle" class="muted">Postgres</text>
+
+  <rect class="box" x="435" y="190" width="230" height="200" rx="8"/>
+  <text x="451" y="218" class="title">transfer-service</text>
+  <text x="451" y="237" class="muted">:8081 · Payments team</text>
+  <text x="451" y="270">transfer saga</text>
+  <text x="451" y="291">account directory</text>
+  <rect class="db" x="451" y="352" width="72" height="22" rx="11"/>
+  <text x="487" y="367" text-anchor="middle" class="muted">Postgres</text>
+
+  <rect class="box" x="850" y="190" width="230" height="200" rx="8"/>
+  <text x="866" y="218" class="title">current-account-service</text>
+  <text x="866" y="237" class="muted">:8082</text>
+  <text x="866" y="270">ledger · overdraft</text>
+  <text x="866" y="291">blocking</text>
+  <text x="866" y="312">incoming payments</text>
+  <rect class="db" x="866" y="352" width="72" height="22" rx="11"/>
+  <text x="902" y="367" text-anchor="middle" class="muted">Postgres</text>
+
+  <!-- Kafka between savings and transfers -->
+  <text x="342" y="224" text-anchor="middle" class="code">transfer-requests</text>
+  <line class="kafka" x1="252" y1="232" x2="431" y2="232"/>
+  <text x="342" y="264" text-anchor="middle" class="code">savings-instructions</text>
+  <line class="kafka" x1="433" y1="272" x2="254" y2="272"/>
+  <text x="342" y="304" text-anchor="middle" class="code">account-events</text>
+  <line class="kafka" x1="252" y1="312" x2="431" y2="312"/>
+  <text x="342" y="344" text-anchor="middle" class="code">transfer-events</text>
+  <line class="kafka" x1="433" y1="352" x2="254" y2="352"/>
+
+  <!-- Kafka between transfers and the current account -->
+  <text x="757" y="254" text-anchor="middle" class="code">ca-instructions</text>
+  <line class="kafka" x1="667" y1="262" x2="846" y2="262"/>
+  <text x="757" y="304" text-anchor="middle" class="code">ca-events</text>
+  <line class="kafka" x1="848" y1="312" x2="669" y2="312"/>
+
+  <!-- planned services -->
+  <line class="plan" x1="205" y1="390" x2="205" y2="466"/>
+  <text x="213" y="432" class="code">account-events</text>
+  <rect class="planbox" x="110" y="468" width="190" height="62" rx="8"/>
+  <text x="126" y="495" class="title">Campaigns / bonus</text>
+  <text x="126" y="515" class="tag">PLANNED</text>
+
+  <line class="plan" x1="550" y1="468" x2="550" y2="394"/>
+  <text x="558" y="432" class="code">transfer-requests</text>
+  <rect class="planbox" x="455" y="468" width="190" height="62" rx="8"/>
+  <text x="471" y="495" class="title">Investments</text>
+  <text x="471" y="515" class="tag">PLANNED · OWN LEDGER</text>
+
+  <line class="plan" x1="890" y1="468" x2="890" y2="394"/>
+  <text x="882" y="432" text-anchor="end" class="code">incoming payments</text>
+  <rect class="planbox" x="795" y="468" width="190" height="62" rx="8"/>
+  <text x="811" y="495" class="title">External payments</text>
+  <text x="811" y="515" class="tag">SEPA · CARDS · PLANNED</text>
+
+  <!-- postings to Finance -->
+  <line class="kafka" x1="50" y1="390" x2="50" y2="596"/>
+  <text x="58" y="432" class="code">postings</text>
+  <line class="plan" x1="1050" y1="390" x2="1050" y2="596"/>
+  <text x="1042" y="580" text-anchor="end" class="code">postings</text>
+  <rect class="box" x="20" y="598" width="1060" height="48" rx="8"/>
+  <text x="40" y="627" class="title">Finance · general ledger</text>
+  <text x="212" y="627" class="muted">outside this repo · current-account postings planned</text>
+
+  <!-- legend -->
+  <line class="rest" x1="20" y1="684" x2="60" y2="684"/>
+  <text x="70" y="688" class="muted">REST</text>
+  <line class="kafka" x1="130" y1="684" x2="170" y2="684"/>
+  <text x="180" y="688" class="muted">Kafka, sender → receiver</text>
+  <line class="plan" x1="360" y1="684" x2="400" y2="684"/>
+  <text x="410" y="688" class="muted">planned</text>
+</svg>

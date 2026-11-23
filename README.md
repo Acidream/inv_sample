@@ -7,33 +7,16 @@ first, and as simple as that allows.
 
 ## The big picture
 
-```mermaid
-flowchart LR
-    App[Customer app]
-    subgraph S [savings-service]
-        SC[(savings.commands.v1)] --> SA[orders · accounts<br/>ledger · interest]
-        SA --> SDB[(Postgres)]
-    end
-    subgraph T [transfer-service · Payments team]
-        TR[(payments.transfer-requests.v1)] --> TS[transfer saga<br/>account directory]
-        TS --> TDB[(Postgres)]
-    end
-    subgraph C [current-account-service]
-        CC[(current-account.commands.v1)] --> CA[accounts · ledger<br/>overdraft · blocking]
-        CA --> CDB[(Postgres)]
-    end
+![Services, existing and planned, and the requests between them](docs/big-picture.svg)
 
-    App -- "POST /orders · GET" --> S
-    App -- "POST /transfers · GET" --> T
-    App -- "POST /current-accounts · GET" --> C
-    SA -- "TransferRequest<br/>(fund an order)" --> TR
-    TS -- "payments.savings-instructions.v1" --> SA
-    SA -- "savings.account-events.v1" --> TS
-    TS -- "payments.current-account-instructions.v1" --> CA
-    CA -- "current-account.events.v1" --> TS
-    TS -- "payments.transfer-events.v1" --> SA
-    SA -- "savings.postings.v1" --> F[Finance:<br/>general ledger]
-```
+Topics: `transfer-requests` = `payments.transfer-requests.v1`, `savings-instructions` =
+`payments.savings-instructions.v1`, `account-events` = `savings.account-events.v1`, `transfer-events` =
+`payments.transfer-events.v1`, `ca-instructions` = `payments.current-account-instructions.v1`,
+`ca-events` = `current-account.events.v1`, `postings` = `savings.postings.v1`. Until the gateway
+exists, the app calls each service directly. Each service's REST commands go through its own input
+topic (`savings.commands.v1`, `current-account.commands.v1`, `payments.transfer-requests.v1`), left
+out of the picture. The planned parts are what [ADR 0001](docs/adr/0001-scope-savings-only.md) leaves
+out and [0021](docs/adr/0021-current-account-service.md) defers.
 
 Three services, each owning its data, connected only through Kafka contracts
 ([ADR 0018](docs/adr/0018-service-structure.md)):
