@@ -55,13 +55,12 @@ savings:
     transfer-requests: payments.transfer-requests.v1
     transfer-events: payments.transfer-events.v1
     partitions: 3
-  outbox:
-    poll-interval-ms: 200
-    batch-size: 100
-  retention:
-    published-outbox-events: 7d
-    processed-events: 30d          # far longer than any redelivery; re-sent transfers are caught by transfer_id
   jobs:
     interest-accrual-cron: "0 15 0 * * *"      # 00:15 Berlin time, after the day is complete
     partition-maintenance-cron: "0 0 3 * * *"
-    retention-cron: "0 30 3 * * *"
+
+# Outbox relay and retention job of platform-messaging (ADR 0022).
+platform:
+  messaging:
+    retention:
+      processed-messages: 30d     # far longer than any redelivery; re-sent transfers are caught by transfer_id

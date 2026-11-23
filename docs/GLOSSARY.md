@@ -42,6 +42,7 @@ Terms as they are used in code, events and docs. If code and glossary disagree, 
 | **Value date** | The business day a posting belongs to in the books, which can differ from when it was computed (an accrual for 31 January booked after midnight). | `Posting.valueDate` |
 | **Sub-ledger / general ledger** | Savings keeps the customer-level books (sub-ledger); Finance keeps the bank's books (general ledger, GL). Postings connect the two. | `Bookkeeping` |
 | **Outbox** | Table where account events and postings are written in the business transaction before being relayed to Kafka. | `outbox_event`, `Outbox`, `OutboxRelay` |
-| **Processed event** | Id of an incoming message that has already been applied; makes the consumer idempotent. | `processed_event` |
+| **Processed message** | Id of an incoming message that has already been applied; makes the consumer idempotent. Shared by all services. | `platform-messaging` `ProcessedMessages`, `processed_message` |
+| **platform-messaging** | The technical library all services use: outbox and relay, idempotent consumer, retention, dead letters, wire checks. No domain rules. | `com.example.platform.messaging` |
 | **Dead-letter topic (DLT)** | `<topic>.DLT`. Where messages go that can never be processed (malformed, contract violation). | `KafkaConfig` |
 | **Contract violation** | An instruction that contradicts earlier ones, e.g. returning a rejected withdrawal or reusing a transfer id. Never silently ignored. | `IllegalTransferException`, `IllegalArgumentException` |

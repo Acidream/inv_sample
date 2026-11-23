@@ -1,5 +1,6 @@
 package com.example.savings.adapter.messaging;
 
+import com.example.platform.messaging.Outbox;
 import com.example.savings.application.port.AccountEventPublisher;
 import com.example.savings.config.SavingsProperties;
 import com.example.savings.domain.AccountEvent;

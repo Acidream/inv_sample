@@ -1,23 +1,20 @@
 package com.example.currentaccount.adapter.persistence;
 
 import com.example.currentaccount.application.port.ProcessedMessages;
-import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
+/** The port, backed by the shared idempotent consumer (ADR 0022). */
 @Component
 class JdbcProcessedMessages implements ProcessedMessages {
 
-    private final JdbcClient jdbc;
+    private final com.example.platform.messaging.ProcessedMessages processed;
 
-    JdbcProcessedMessages(JdbcClient jdbc) {
-        this.jdbc = jdbc;
+    JdbcProcessedMessages(com.example.platform.messaging.ProcessedMessages processed) {
+        this.processed = processed;
     }
 
-    /** Runs in the caller's transaction: if the change rolls back, so does the marker. */
     @Override
     public boolean markProcessed(String messageId) {
-        return jdbc.sql("insert into processed_message (message_id) values (:id) on conflict do nothing")
-                .param("id", messageId)
-                .update() == 1;
+        return processed.markProcessed(messageId);
     }
 }

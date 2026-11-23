@@ -157,6 +157,7 @@ sequenceDiagram
 | Auditability | Append-only ledger with `balance_after`; daily accrual rows | [0004](docs/adr/0004-money-and-append-only-ledger.md), [0010](docs/adr/0010-interest-accrual-and-payout.md) |
 | Books that balance | Every booking published as a double-entry posting, balanced by construction, value-dated | [0014](docs/adr/0014-double-entry-postings-for-finance.md) |
 | No lost or phantom events | Transactional outbox, single ordered relay, in every service | [0006](docs/adr/0006-transactional-outbox.md) |
+| Shared code, not shared domains | One technical library for outbox, idempotency, retention, dead letters; `Money` and all domain types stay per service | [0022](docs/adr/0022-shared-technical-library.md) |
 | At-least-once delivery | De-duplication by message id and by transfer id in the business transaction; retries; dead-letter topics | [0007](docs/adr/0007-idempotent-consumer-and-dead-letters.md) |
 | Concurrency | Per-account ordering via partition key, optimistic locking, DB constraints, per-account entry numbers; advisory locks so a request and its account's opening event can't miss each other; row locks on current accounts | [0008](docs/adr/0008-ordering-and-concurrency.md), [0011](docs/adr/0011-ledger-partitioning-and-keyset-pagination.md) |
 | Big tables | Monthly partitions, one composite index, keyset pagination | [0011](docs/adr/0011-ledger-partitioning-and-keyset-pagination.md) |
@@ -183,6 +184,7 @@ Checkstyle · GitHub Actions
 
 ```
 events-proto/               Protobuf contracts, one package per owning team: savings.v1, payments.v1, current_account.v1
+platform-messaging/         technical library: outbox and relay, idempotent consumer, retention, dead letters, wire checks
 savings-service/
   domain/                   Account, LedgerEntry, Posting, Money, Interest, SavingsProduct; order/ Order
   application/              use cases and the ports they need; order/ OrderService

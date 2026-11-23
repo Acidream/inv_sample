@@ -1,6 +1,7 @@
 package com.example.savings.adapter.messaging;
 
 import com.example.events.savings.v1.Posting.Line;
+import com.example.platform.messaging.Outbox;
 import com.example.savings.application.port.PostingPublisher;
 import com.example.savings.config.SavingsProperties;
 import com.example.savings.domain.Money;

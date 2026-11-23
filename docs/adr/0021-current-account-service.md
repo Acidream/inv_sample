@@ -1,6 +1,6 @@
 # 0021 – The current account service
 
-Date: 2026-11-23 · Status: Accepted · Amends [0018](0018-service-structure.md)
+Date: 2026-11-23 · Status: Accepted · Amends [0018](0018-service-structure.md) · Amended by [0022](0022-shared-technical-library.md)
 
 ## Context
 

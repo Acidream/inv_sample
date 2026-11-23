@@ -1,6 +1,6 @@
 # 0013 – Business metrics, dashboard and alerts
 
-Date: 2026-11-22 · Status: Accepted
+Date: 2026-11-22 · Status: Accepted · Outbox and dead-letter metrics renamed: [0022](0022-shared-technical-library.md)
 
 ## Context
 

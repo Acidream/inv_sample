@@ -15,14 +15,10 @@ import org.springframework.validation.annotation.Validated;
 @ConfigurationProperties("transfers")
 public record TransferProperties(
         @Valid @NotNull Topics topics,
-        @Valid @NotNull Outbox outbox,
         @NotNull Duration awaitingAccountsTimeout) {
 
     public record Topics(@NotBlank String transferRequests, @NotBlank String transferEvents,
             @NotBlank String savingsInstructions, @NotBlank String currentAccountInstructions,
             @NotBlank String savingsEvents, @NotBlank String currentAccountEvents, @Positive int partitions) {
-    }
-
-    public record Outbox(@Positive long pollIntervalMs, @Positive int batchSize) {
     }
 }

@@ -1,13 +1,12 @@
 package com.example.transfers.adapter.messaging;
 
 import com.example.events.payments.v1.TransferRequest;
+import com.example.platform.messaging.WireValues;
 import com.example.transfers.domain.Money;
 import com.example.transfers.domain.Transfer;
 import com.google.protobuf.Timestamp;
-import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
-import java.util.regex.Pattern;
 
 /**
  * Anti-corruption layer for the wire formats: validates what comes in and builds what goes out.
@@ -20,9 +19,7 @@ final class WireFormat {
     static final int MAX_TRANSFER_ID_LENGTH = 100;
     /** {@code processed_message.message_id varchar(200)}, less the topic prefix. */
     static final int MAX_MESSAGE_ID_LENGTH = 180;
-    static final int MAX_INTEGER_DIGITS = 17;
     static final int MAX_DETAIL_LENGTH = 300;
-    private static final Pattern AMOUNT = Pattern.compile("\\d+(\\.\\d{1,2})?");
 
     private WireFormat() {
     }
@@ -50,16 +47,7 @@ final class WireFormat {
         if (!Money.CURRENCY.equals(money.getCurrency())) {
             throw new IllegalArgumentException("Unsupported currency: " + money.getCurrency());
         }
-        var raw = money.getAmount();
-        if (!AMOUNT.matcher(raw).matches()) {
-            throw new IllegalArgumentException("Amount must be a plain decimal with at most two fraction digits: "
-                    + raw);
-        }
-        var amount = new BigDecimal(raw);
-        if (amount.precision() - amount.scale() > MAX_INTEGER_DIGITS) {
-            throw new IllegalArgumentException("Amount too large: " + raw);
-        }
-        return new Money(amount);
+        return new Money(WireValues.plainAmount(money.getAmount()));
     }
 
     static com.example.events.common.v1.Money money(Money money) {
@@ -70,45 +58,30 @@ final class WireFormat {
     }
 
     static String messageId(String value) {
-        return id(value, "event_id", MAX_MESSAGE_ID_LENGTH);
+        return WireValues.id(value, "event_id", MAX_MESSAGE_ID_LENGTH);
     }
 
     static String transferId(String value) {
-        return id(value, "transfer_id", MAX_TRANSFER_ID_LENGTH);
+        return WireValues.id(value, "transfer_id", MAX_TRANSFER_ID_LENGTH);
     }
 
     static UUID uuid(String value, String field) {
-        if (value.isBlank()) {
-            throw new IllegalArgumentException("Missing " + field);
-        }
-        return UUID.fromString(value);
+        return WireValues.uuid(value, field);
     }
 
     static String detail(String value) {
-        return value.length() > MAX_DETAIL_LENGTH ? value.substring(0, MAX_DETAIL_LENGTH) : value;
+        return WireValues.text(value, MAX_DETAIL_LENGTH);
     }
 
     static Timestamp timestamp(Instant instant) {
-        return Timestamp.newBuilder().setSeconds(instant.getEpochSecond()).setNanos(instant.getNano()).build();
+        return WireValues.timestamp(instant);
     }
 
     private static Instant instant(Timestamp timestamp, String field) {
-        if (timestamp == null) {
-            throw new IllegalArgumentException("Missing " + field);
-        }
-        return Instant.ofEpochSecond(timestamp.getSeconds(), timestamp.getNanos());
+        return WireValues.instant(timestamp, field);
     }
 
     private static String id(String value, String field, int maxLength) {
-        if (value.isBlank()) {
-            throw new IllegalArgumentException("Missing " + field);
-        }
-        if (value.codePointCount(0, value.length()) > maxLength) {
-            throw new IllegalArgumentException(field + " longer than " + maxLength + " characters");
-        }
-        if (value.indexOf('\u0000') >= 0) {
-            throw new IllegalArgumentException(field + " contains a NUL character");
-        }
-        return value;
+        return WireValues.id(value, field, maxLength);
     }
 }

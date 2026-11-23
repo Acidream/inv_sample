@@ -39,6 +39,7 @@ class DeadLetterIT {
     }
 
     private double deadLettered() {
-        return registry.get("savings.messages.dead.lettered").counter().count();
+        return registry.get("messages.dead.lettered").tag("topic", KafkaTestSupport.INSTRUCTIONS).counter()
+                .count();
     }
 }

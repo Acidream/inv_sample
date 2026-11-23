@@ -1,27 +1,29 @@
-package com.example.currentaccount.adapter.messaging;
+package com.example.platform.messaging;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Transactional outbox, write side, as in the other services (ADR 0006): a message is inserted in the same
- * transaction as the state change; {@link OutboxRelay} ships it to Kafka afterwards.
+ * Transactional outbox, write side (ADR 0006): a serialized message is inserted in the same
+ * transaction as the business change, and {@link OutboxRelay} ships it to Kafka afterwards. This
+ * avoids the dual write (database committed but the Kafka send lost, or the other way round).
+ *
+ * <p>Needs the table {@code outbox_event} described in {@code package-info}.
  */
-@Component
-class Outbox {
+public class Outbox {
 
     private final JdbcClient jdbc;
 
-    Outbox(JdbcClient jdbc) {
+    public Outbox(JdbcClient jdbc) {
         this.jdbc = jdbc;
     }
 
     /**
-     * Refuses to run outside a transaction: a message without its state change is exactly the bug.
+     * Refuses to run outside a transaction: a message without its business change is exactly the bug.
      *
-     * @param key the Kafka message key: the account id
+     * @param key  the Kafka message key; messages with one key keep their order
+     * @param type a label for people reading the table, e.g. the payload's case
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public void add(String topic, String key, String type, byte[] payload) {

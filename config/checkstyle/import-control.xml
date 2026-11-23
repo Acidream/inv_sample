@@ -75,6 +75,14 @@
         </subpackage>
     </subpackage>
 
+    <!-- The technical library (ADR 0022): no domain rules, no contracts, no service code. -->
+    <subpackage name="platform">
+        <disallow pkg="com.example.savings"/>
+        <disallow pkg="com.example.transfers"/>
+        <disallow pkg="com.example.currentaccount"/>
+        <disallow pkg="com.example.events"/>
+    </subpackage>
+
     <subpackage name="currentaccount">
         <disallow pkg="com.example.savings"/>
         <disallow pkg="com.example.transfers"/>

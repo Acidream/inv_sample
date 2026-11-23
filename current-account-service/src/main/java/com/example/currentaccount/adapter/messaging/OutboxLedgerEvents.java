@@ -13,11 +13,12 @@ import com.example.events.currentaccount.v1.CurrentAccountDebited;
 import com.example.events.currentaccount.v1.CurrentAccountEvent;
 import com.example.events.currentaccount.v1.CurrentAccountOpened;
 import com.example.events.currentaccount.v1.DebitRejected;
+import com.example.platform.messaging.Outbox;
 import java.time.Instant;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
 
-/** Events to {@code current-account.events.v1} through the {@link Outbox}, keyed by account id. */
+/** Events to {@code current-account.events.v1} through the shared {@link Outbox}, keyed by account id. */
 @Component
 class OutboxLedgerEvents implements LedgerEvents {
 

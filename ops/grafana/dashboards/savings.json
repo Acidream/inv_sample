@@ -54,8 +54,8 @@
       "gridPos": { "x": 0, "y": 16, "w": 8, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
-        { "refId": "A", "expr": "savings_outbox_pending", "legendFormat": "pending" },
-        { "refId": "B", "expr": "sum(rate(savings_outbox_published_total[5m])) * 60", "legendFormat": "published/min" }
+        { "refId": "A", "expr": "outbox_pending{application=\"savings-service\"}", "legendFormat": "pending" },
+        { "refId": "B", "expr": "sum(rate(outbox_published_total{application=\"savings-service\"}[5m])) * 60", "legendFormat": "published/min" }
       ]
     },
     {
@@ -65,11 +65,11 @@
       "targets": [{ "refId": "A", "expr": "max(kafka_consumer_fetch_manager_records_lag_max)", "legendFormat": "max lag" }]
     },
     {
-      "type": "stat", "title": "Dead-lettered instructions (24h)",
+      "type": "stat", "title": "Dead-lettered messages (24h)",
       "gridPos": { "x": 16, "y": 16, "w": 8, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } } },
-      "targets": [{ "refId": "A", "expr": "sum(increase(savings_messages_dead_lettered_total[24h])) or vector(0)" }]
+      "targets": [{ "refId": "A", "expr": "sum(increase(messages_dead_lettered_total{application=\"savings-service\"}[24h])) or vector(0)" }]
     },
     { "type": "row", "title": "Service", "gridPos": { "x": 0, "y": 24, "w": 24, "h": 1 } },
     {

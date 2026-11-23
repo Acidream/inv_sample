@@ -34,4 +34,5 @@ jobs:
             transfer-service/build/reports/
             transfer-service/build/karate-reports/
             current-account-service/build/reports/
+            platform-messaging/build/reports/
             current-account-service/build/karate-reports/

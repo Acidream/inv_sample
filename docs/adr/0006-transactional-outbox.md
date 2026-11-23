@@ -1,6 +1,6 @@
 # 0006 – Publish events through a transactional outbox
 
-Date: 2026-11-22 · Status: Accepted
+Date: 2026-11-22 · Status: Accepted · Implementation shared by all services, metric names changed: [0022](0022-shared-technical-library.md)
 
 ## Context
 

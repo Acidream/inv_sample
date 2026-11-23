@@ -72,7 +72,8 @@ class ArchitectureTest {
     void useCasesDoNotKnowAboutWireFormatsOrInfrastructure() {
         noClasses().that().resideInAPackage("..savings.application..")
                 .should().dependOnClassesThat().resideInAnyPackage(
-                        "com.example.events..", "org.apache.kafka..", "org.springframework.kafka..",
+                        "com.example.events..", "com.example.platform..",
+                        "org.apache.kafka..", "org.springframework.kafka..",
                         "org.springframework.jdbc..", "org.springframework.web..", "io.micrometer..")
                 .check(CLASSES);
     }

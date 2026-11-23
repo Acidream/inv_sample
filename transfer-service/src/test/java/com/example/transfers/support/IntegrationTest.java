@@ -12,7 +12,8 @@ import org.springframework.context.annotation.Import;
 @Retention(RetentionPolicy.RUNTIME)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
     "transfers.jobs.awaiting-accounts-cron=-",
-    "transfers.outbox.poll-interval-ms=50"
+    "platform.messaging.outbox.poll-interval-ms=50",
+    "platform.messaging.retention.cron=-"
 })
 @Import(TestcontainersConfiguration.class)
 public @interface IntegrationTest {

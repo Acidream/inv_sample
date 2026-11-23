@@ -47,9 +47,6 @@ transfers:
     savings-events: savings.account-events.v1
     current-account-events: current-account.events.v1
     partitions: 3
-  outbox:
-    poll-interval-ms: 200
-    batch-size: 100
   # A request whose accounts are still unknown after this long fails as INVALID_REQUEST.
   awaiting-accounts-timeout: 10m
   jobs:

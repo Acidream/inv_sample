@@ -1,6 +1,5 @@
-package com.example.savings.adapter.messaging;
+package com.example.platform.messaging;
 
-import com.example.savings.config.SavingsProperties;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -12,14 +11,12 @@ import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * Transactional outbox, read side. Polls unpublished rows in insertion order and sends them with their
- * key (the account id, or the transfer id for transfer requests), so messages with one key keep their
- * order on one partition. Rows are marked published
- * only after Kafka acknowledged them; a crash in between re-sends them (at-least-once).
+ * Transactional outbox, read side (ADR 0006). Polls unpublished rows in insertion order and sends
+ * them with their key, so messages with one key keep their order on one partition. Rows are marked
+ * published only after Kafka acknowledged them; a crash in between re-sends them (at-least-once).
  *
  * <p>Order across instances rests on two guards:
  * <ul>
@@ -28,11 +25,13 @@ import org.springframework.transaction.support.TransactionTemplate;
  *       {@code lockAtMostFor} and the lock can't expire under a running relay.</li>
  *   <li>Rows are locked with plain {@code for update}, not {@code skip locked}: should a second relay
  *       ever run anyway, it waits for the first one's batch instead of skipping ahead and sending
- *       newer events of the same account first.</li>
+ *       newer messages with the same key first.</li>
  * </ul>
+ *
+ * <p>Metrics: {@code outbox.published} (counter) and {@code outbox.pending} (gauge); the service
+ * tells them apart by its {@code application} tag.
  */
-@Component
-class OutboxRelay {
+public class OutboxRelay {
 
     static final Duration ACK_TIMEOUT = Duration.ofSeconds(30);
     static final Duration DRAIN_BUDGET = Duration.ofSeconds(60);
@@ -46,19 +45,21 @@ class OutboxRelay {
     private final int batchSize;
     private final Counter published;
 
-    OutboxRelay(JdbcClient jdbc, KafkaTemplate<String, byte[]> kafka, TransactionTemplate tx,
-            SavingsProperties properties, MeterRegistry registry) {
+    public OutboxRelay(JdbcClient jdbc, KafkaTemplate<String, byte[]> kafka, TransactionTemplate tx, int batchSize,
+            MeterRegistry registry) {
         this.jdbc = jdbc;
         this.kafka = kafka;
         this.tx = tx;
-        this.batchSize = properties.outbox().batchSize();
-        this.published = Counter.builder("savings.outbox.published").register(registry);
-        Gauge.builder("savings.outbox.pending", this::pendingCount)
-                .description("Events written but not yet sent to Kafka")
+        this.batchSize = batchSize;
+        this.published = Counter.builder("outbox.published")
+                .description("Messages sent to Kafka from the outbox")
+                .register(registry);
+        Gauge.builder("outbox.pending", this::pendingCount)
+                .description("Messages written but not yet sent to Kafka")
                 .register(registry);
     }
 
-    @Scheduled(fixedDelayString = "${savings.outbox.poll-interval-ms}")
+    @Scheduled(fixedDelayString = "${platform.messaging.outbox.poll-interval-ms:200}")
     // lockAtMostFor must stay above DRAIN_BUDGET + ACK_TIMEOUT (plus DB time): see the class comment.
     @SchedulerLock(name = "outbox-relay", lockAtMostFor = "PT5M")
     public void relay() {
@@ -69,7 +70,8 @@ class OutboxRelay {
         }
     }
 
-    int relayBatch() {
+    /** Sends one batch. @return how many messages were sent */
+    public int relayBatch() {
         Integer sent = tx.execute(status -> {
             var rows = jdbc.sql("""
                     select id, topic, message_key, payload from outbox_event

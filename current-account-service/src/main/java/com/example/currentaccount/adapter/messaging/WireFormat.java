@@ -11,16 +11,16 @@ import com.example.events.currentaccount.v1.OpenCurrentAccount;
 import com.example.events.currentaccount.v1.ReceivePayment;
 import com.example.events.currentaccount.v1.UnblockAccount;
 import com.example.events.payments.v1.CurrentAccountInstruction;
+import com.example.platform.messaging.WireValues;
 import com.google.protobuf.Timestamp;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
-import java.util.regex.Pattern;
 
 /**
  * Anti-corruption layer for the wire formats: validates what comes in and builds what goes out.
- * Anything malformed throws {@link IllegalArgumentException}, which dead-letters the message,
- * including values the database would refuse (ids longer than their columns, amounts too large).
+ * Anything malformed throws {@link IllegalArgumentException}, which dead-letters the message; the
+ * technical checks are {@link WireValues}, the business ones (EUR, positive amounts) are here.
  */
 final class WireFormat {
 
@@ -29,8 +29,6 @@ final class WireFormat {
     /** {@code processed_message.message_id varchar(200)}, less the prefix. */
     static final int MAX_MESSAGE_ID_LENGTH = 180;
     static final int MAX_REASON_LENGTH = 300;
-    static final int MAX_INTEGER_DIGITS = 17;
-    private static final Pattern AMOUNT = Pattern.compile("\\d+(\\.\\d{1,2})?");
 
     private WireFormat() {
     }
@@ -111,7 +109,7 @@ final class WireFormat {
     }
 
     static Timestamp timestamp(Instant instant) {
-        return Timestamp.newBuilder().setSeconds(instant.getEpochSecond()).setNanos(instant.getNano()).build();
+        return WireValues.timestamp(instant);
     }
 
     private static BigDecimal overdraftLimit(com.example.events.common.v1.Money money) {
@@ -122,16 +120,7 @@ final class WireFormat {
         if (!Money.CURRENCY.equals(money.getCurrency())) {
             throw new IllegalArgumentException("Unsupported currency: " + money.getCurrency());
         }
-        var raw = money.getAmount();
-        if (!AMOUNT.matcher(raw).matches()) {
-            throw new IllegalArgumentException("Amount must be a plain decimal with at most two fraction digits: "
-                    + raw);
-        }
-        var amount = new BigDecimal(raw);
-        if (amount.precision() - amount.scale() > MAX_INTEGER_DIGITS) {
-            throw new IllegalArgumentException("Amount too large: " + raw);
-        }
-        return amount;
+        return WireValues.plainAmount(money.getAmount());
     }
 
     private static com.example.events.common.v1.Money eur(BigDecimal amount) {
@@ -142,38 +131,22 @@ final class WireFormat {
     }
 
     private static UUID uuid(String value, String field) {
-        if (value.isBlank()) {
-            throw new IllegalArgumentException("Missing " + field);
-        }
-        return UUID.fromString(value);
+        return WireValues.uuid(value, field);
     }
 
     private static Instant instant(Timestamp timestamp) {
-        if (timestamp == null) {
-            throw new IllegalArgumentException("Missing occurred_at");
-        }
-        return Instant.ofEpochSecond(timestamp.getSeconds(), timestamp.getNanos());
+        return WireValues.instant(timestamp, "occurred_at");
     }
 
     private static String reference(String value, String field) {
-        return id(value, field, MAX_REFERENCE_LENGTH);
+        return WireValues.id(value, field, MAX_REFERENCE_LENGTH);
     }
 
     private static String reason(String value) {
-        var reason = id(value, "reason", Integer.MAX_VALUE);
-        return reason.length() > MAX_REASON_LENGTH ? reason.substring(0, MAX_REASON_LENGTH) : reason;
+        return WireValues.text(WireValues.required(value, "reason"), MAX_REASON_LENGTH);
     }
 
     private static String id(String value, String field, int maxLength) {
-        if (value.isBlank()) {
-            throw new IllegalArgumentException("Missing " + field);
-        }
-        if (value.codePointCount(0, value.length()) > maxLength) {
-            throw new IllegalArgumentException(field + " longer than " + maxLength + " characters");
-        }
-        if (value.indexOf('\u0000') >= 0) {
-            throw new IllegalArgumentException(field + " contains a NUL character");
-        }
-        return value;
+        return WireValues.id(value, field, maxLength);
     }
 }

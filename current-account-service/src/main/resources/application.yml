@@ -44,6 +44,4 @@ current-account:
     instructions: payments.current-account-instructions.v1
     events: current-account.events.v1
     partitions: 3
-  outbox:
-    poll-interval-ms: 200
-    batch-size: 100
+# Outbox relay and retention: platform-messaging's defaults (platform.messaging.*).

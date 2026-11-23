@@ -1,6 +1,6 @@
 # 0018 – Service structure: savings, transfers, current account
 
-Date: 2026-11-23 · Status: Accepted · Supersedes [0002](0002-one-service-and-a-contract-library.md) · Current account built in [0021](0021-current-account-service.md)
+Date: 2026-11-23 · Status: Accepted · Supersedes [0002](0002-one-service-and-a-contract-library.md) · Current account built in [0021](0021-current-account-service.md) · Technical library: [0022](0022-shared-technical-library.md)
 
 ## Context
 

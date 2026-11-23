@@ -1,23 +1,21 @@
 package com.example.savings.adapter.persistence;
 
+import com.example.platform.messaging.ProcessedMessages;
 import com.example.savings.application.port.ProcessedEvents;
-import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
+/** The port, backed by the shared idempotent consumer (ADR 0022). */
 @Component
 class JdbcProcessedEvents implements ProcessedEvents {
 
-    private final JdbcClient jdbc;
+    private final ProcessedMessages processed;
 
-    JdbcProcessedEvents(JdbcClient jdbc) {
-        this.jdbc = jdbc;
+    JdbcProcessedEvents(ProcessedMessages processed) {
+        this.processed = processed;
     }
 
-    /** Runs in the caller's transaction: if the business change rolls back, so does the marker. */
     @Override
     public boolean markProcessed(String eventId) {
-        return jdbc.sql("insert into processed_event (event_id) values (:id) on conflict do nothing")
-                .param("id", eventId)
-                .update() == 1;
+        return processed.markProcessed(eventId);
     }
 }

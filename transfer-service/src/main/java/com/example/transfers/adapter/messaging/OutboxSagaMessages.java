@@ -13,6 +13,7 @@ import com.example.events.payments.v1.TransferFailed;
 import com.example.events.payments.v1.TransferFromCurrentAccount;
 import com.example.events.payments.v1.TransferReturned;
 import com.example.events.payments.v1.TransferToCurrentAccount;
+import com.example.platform.messaging.Outbox;
 import com.example.transfers.application.port.SagaMessages;
 import com.example.transfers.config.TransferProperties;
 import com.example.transfers.domain.Step;

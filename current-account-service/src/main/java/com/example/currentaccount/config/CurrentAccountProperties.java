@@ -9,7 +9,7 @@ import org.springframework.validation.annotation.Validated;
 
 @Validated
 @ConfigurationProperties("current-account")
-public record CurrentAccountProperties(@Valid @NotNull Topics topics, @Valid @NotNull Outbox outbox) {
+public record CurrentAccountProperties(@Valid @NotNull Topics topics) {
 
     /**
      * @param commands     the service's own command log
@@ -18,8 +18,5 @@ public record CurrentAccountProperties(@Valid @NotNull Topics topics, @Valid @No
      */
     public record Topics(@NotBlank String commands, @NotBlank String instructions, @NotBlank String events,
             @Positive int partitions) {
-    }
-
-    public record Outbox(@Positive long pollIntervalMs, @Positive int batchSize) {
     }
 }

@@ -1,24 +1,24 @@
 groups:
   - name: savings
     rules:
-      - alert: SavingsInstructionDeadLettered
-        # An instruction from Payments could not be applied and was parked on the dead-letter topic.
-        # Nothing is lost, but the money is not where Payments believes it is until someone inspects,
-        # fixes and replays it (runbook: ADR 0007).
-        expr: increase(savings_messages_dead_lettered_total[10m]) > 0
+      - alert: MessageDeadLettered
+        # A message could not be applied and was parked on the dead-letter topic, in any service.
+        # Nothing is lost, but the money is not where the sender believes it is until someone
+        # inspects, fixes and replays it (runbook: ADR 0007).
+        expr: increase(messages_dead_lettered_total[10m]) > 0
         labels:
           severity: page
         annotations:
-          summary: "{{ $value }} payment instructions were dead-lettered on {{ $labels.topic }}"
+          summary: "{{ $value }} messages were dead-lettered by {{ $labels.application }} from {{ $labels.topic }}"
 
-      - alert: SavingsOutboxBacklog
-        # Events are committed but not reaching Kafka (broker down, relay stuck, lock not released).
-        expr: savings_outbox_pending > 100
+      - alert: OutboxBacklog
+        # Messages are committed but not reaching Kafka (broker down, relay stuck, lock not released).
+        expr: outbox_pending > 100
         for: 5m
         labels:
           severity: page
         annotations:
-          summary: "{{ $value }} account events waiting in the outbox"
+          summary: "{{ $value }} messages waiting in the outbox of {{ $labels.application }}"
 
       - alert: SavingsInterestBehind
         # Some account hasn't accrued yesterday's interest long after the nightly run (00:15 Berlin):

@@ -1,6 +1,6 @@
 # 0007 – Idempotent consumer, retries and a dead-letter topic
 
-Date: 2026-11-22 · Status: Accepted
+Date: 2026-11-22 · Status: Accepted · Implementation shared by all services, table and metric names changed: [0022](0022-shared-technical-library.md)
 
 ## Context
 
