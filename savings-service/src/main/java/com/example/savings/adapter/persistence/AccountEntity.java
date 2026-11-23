@@ -3,6 +3,7 @@ package com.example.savings.adapter.persistence;
 import com.example.savings.domain.Account;
 import com.example.savings.domain.Interest;
 import com.example.savings.domain.Money;
+import com.example.savings.domain.SavingsProduct;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -24,8 +25,11 @@ class AccountEntity {
     @Column(nullable = false, updatable = false)
     private UUID customerId;
 
-    @Column(nullable = false, updatable = false, precision = 7, scale = 4)
-    private BigDecimal annualRate;
+    @Column(nullable = false, updatable = false)
+    private String productCode;
+
+    @Column(nullable = false, updatable = false)
+    private int productVersion;
 
     @Column(nullable = false, precision = 19, scale = 2)
     private BigDecimal balance;
@@ -56,7 +60,8 @@ class AccountEntity {
         var entity = new AccountEntity();
         entity.id = state.id();
         entity.customerId = state.customerId();
-        entity.annualRate = state.annualRate();
+        entity.productCode = state.product().code();
+        entity.productVersion = state.product().version();
         entity.openedAt = state.openedAt();
         entity.version = state.version();
         entity.apply(state);
@@ -72,13 +77,22 @@ class AccountEntity {
         lastBookedAt = state.lastBookedAt();
     }
 
-    Account.State toState() {
-        return new Account.State(id, customerId, annualRate, new Money(balance), accruedInterest, lastAccrualDate,
+    /** @param product the version stored in {@link #productCode()} and {@link #productVersion()} */
+    Account.State toState(SavingsProduct product) {
+        return new Account.State(id, customerId, product, new Money(balance), accruedInterest, lastAccrualDate,
                 openedAt, lastEntryNo, lastBookedAt, version);
     }
 
     UUID id() {
         return id;
+    }
+
+    String productCode() {
+        return productCode;
+    }
+
+    int productVersion() {
+        return productVersion;
     }
 
     Long version() {

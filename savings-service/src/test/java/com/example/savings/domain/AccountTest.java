@@ -7,7 +7,6 @@ import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.YearMonth;
 import java.time.ZoneId;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -17,7 +16,12 @@ class AccountTest {
     private static final ZoneId BERLIN = ZoneId.of("Europe/Berlin");
     private static final Instant NOW = Instant.parse("2026-01-01T09:00:00Z");
 
-    private final Account account = Account.open(UUID.randomUUID(), new BigDecimal("0.0365"), NOW, BERLIN);
+    private static final SavingsProduct PRODUCT =
+            new SavingsProduct("TEST", 1, "Test", new BigDecimal("0.0365"), PayoutFrequency.MONTHLY);
+    private static final InterestPeriod JANUARY = PayoutFrequency.MONTHLY.periodContaining(LocalDate.of(2026, 1, 1));
+    private static final InterestPeriod FEBRUARY = PayoutFrequency.MONTHLY.periodContaining(LocalDate.of(2026, 2, 1));
+
+    private final Account account = Account.open(UUID.randomUUID(), PRODUCT, NOW, BERLIN);
 
     @Test
     void depositProducesLedgerEntryWithRunningBalance() {
@@ -34,7 +38,7 @@ class AccountTest {
     void aStoredAccountIsRebuiltWithTheSameState() {
         account.deposit(Money.of("10.00"), "p1", NOW);
         account.accrueDay(account.nextAccrualDate(), Money.of("10.00"));
-        var stored = new Account.State(account.id(), account.customerId(), account.annualRate(), account.balance(),
+        var stored = new Account.State(account.id(), account.customerId(), account.product(), account.balance(),
                 account.accruedInterest(), account.lastAccrualDate(), account.openedAt(), 1, NOW, 7L);
 
         var restored = Account.restore(stored);
@@ -45,7 +49,7 @@ class AccountTest {
 
     @Test
     void aStoredAccountMustNotBeOverdrawn() {
-        var overdrawn = new Account.State(account.id(), account.customerId(), account.annualRate(),
+        var overdrawn = new Account.State(account.id(), account.customerId(), account.product(),
                 Money.of("-0.01"), account.accruedInterest(), account.lastAccrualDate(), NOW, 0, NOW, 1L);
 
         assertThatIllegalArgumentException().isThrownBy(() -> Account.restore(overdrawn));
@@ -102,6 +106,26 @@ class AccountTest {
     }
 
     @Test
+    void theAccountEarnsItsProductsRate() {
+        var interest = account.accrueDay(LocalDate.of(2026, 1, 1), Money.of("1000.00"));
+
+        assertThat(account.annualRate()).isEqualByComparingTo("0.0365");
+        assertThat(interest).isEqualByComparingTo("0.10");
+    }
+
+    @Test
+    void payoutIsDueAtTheEndOfTheProductsPayoutPeriod() {
+        var quarterly = Account.open(UUID.randomUUID(),
+                new SavingsProduct("Q", 1, "Quarterly", new BigDecimal("0.0365"), PayoutFrequency.QUARTERLY), NOW,
+                BERLIN);
+
+        assertThat(account.payoutDueAfter(LocalDate.of(2026, 1, 31))).isTrue();
+        assertThat(quarterly.payoutDueAfter(LocalDate.of(2026, 1, 31))).isFalse();
+        assertThat(quarterly.payoutDueAfter(LocalDate.of(2026, 3, 31))).isTrue();
+        assertThat(quarterly.payoutPeriodOf(LocalDate.of(2026, 3, 31)).label()).isEqualTo("2026-Q1");
+    }
+
+    @Test
     void interestStartsOnTheOpeningDayAndMustBeAccruedWithoutGaps() {
         assertThat(account.nextAccrualDate()).isEqualTo(LocalDate.of(2026, 1, 1));
         assertThatIllegalStateException()
@@ -114,7 +138,7 @@ class AccountTest {
         account.accrueDay(LocalDate.of(2026, 1, 1), Money.of("1000.00"));   // 0.10
         account.accrueDay(LocalDate.of(2026, 1, 2), Money.of("999.95"));    // 0.099995
 
-        var entry = account.payOutInterest(YearMonth.of(2026, 1), NOW).orElseThrow();
+        var entry = account.payOutInterest(JANUARY, NOW).orElseThrow();
 
         assertThat(entry.amount()).isEqualTo(Money.of("0.19"));
         assertThat(entry.reference()).isEqualTo("interest:2026-01");
@@ -125,17 +149,17 @@ class AccountTest {
     void nothingIsPaidBeforeAWholeCentIsEarned() {
         account.accrueDay(LocalDate.of(2026, 1, 1), Money.of("99.00"));    // 0.0099
 
-        assertThat(account.payOutInterest(YearMonth.of(2026, 1), NOW)).isEmpty();
+        assertThat(account.payOutInterest(JANUARY, NOW)).isEmpty();
         assertThat(account.accruedInterest()).isEqualByComparingTo("0.0099");
     }
 
     @Test
     void theCarriedRemainderIsPaidOnceItAddsUpToACent() {
         account.accrueDay(LocalDate.of(2026, 1, 1), Money.of("99.00"));    // 0.0099
-        account.payOutInterest(YearMonth.of(2026, 1), NOW);
+        account.payOutInterest(JANUARY, NOW);
         account.accrueDay(LocalDate.of(2026, 1, 2), Money.of("99.00"));    // + 0.0099 = 0.0198
 
-        var entry = account.payOutInterest(YearMonth.of(2026, 2), NOW).orElseThrow();
+        var entry = account.payOutInterest(FEBRUARY, NOW).orElseThrow();
 
         assertThat(entry.amount()).isEqualTo(Money.of("0.01"));
         assertThat(account.accruedInterest()).isEqualByComparingTo("0.0098");

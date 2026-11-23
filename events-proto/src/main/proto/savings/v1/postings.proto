@@ -23,7 +23,7 @@ message Posting {
     DEPOSIT = 1;            // transfer-clearing  -> customer
     WITHDRAWAL = 2;         // customer           -> transfer-clearing
     INTEREST_ACCRUAL = 3;   // interest-expense   -> interest-payable, daily, sub-cent
-    INTEREST_PAYOUT = 4;    // interest-payable   -> customer, monthly, rounded to cents
+    INTEREST_PAYOUT = 4;    // interest-payable   -> customer, per payout period, rounded to cents
     WITHDRAWAL_RETURN = 5;  // transfer-clearing  -> customer, a withdrawal the current account refused
   }
 
@@ -43,7 +43,7 @@ message Posting {
   string value_date = 3;    // ISO date (Europe/Berlin) the posting belongs to in the books
   string account_id = 4;
   Type type = 5;
-  string reference = 6;     // transfer id, "interest:2026-01" or "accrual:2026-01-31"
+  string reference = 6;     // transfer id, "interest:<period>" (2026-01, 2026-Q1, 2026) or "accrual:2026-01-31"
   string currency = 7;      // ISO 4217, "EUR"
   repeated Line lines = 8;
 }

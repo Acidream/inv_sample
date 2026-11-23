@@ -37,13 +37,13 @@ class AccountController {
     /**
      * A client that may retry (e.g. after a timeout) sends an {@code Idempotency-Key}: the same request
      * with the same key gets the same account back, with the same {@code 201}, instead of a second
-     * account. The same key with a different body is a {@code 422}.
+     * account. The same key with a different body is a {@code 422}, and so is a product that isn't on sale.
      */
     @PostMapping
     ResponseEntity<AccountResponse> open(@Valid @RequestBody OpenAccountRequest request,
             @RequestHeader(name = "Idempotency-Key", required = false) @Size(min = 1, max = 100)
             String idempotencyKey) {
-        var account = accounts.open(request.customerId(), request.annualRate(), idempotencyKey).account();
+        var account = accounts.open(request.customerId(), request.productCode(), idempotencyKey).account();
         return ResponseEntity.created(URI.create("/accounts/" + account.id())).body(AccountResponse.from(account));
     }
 

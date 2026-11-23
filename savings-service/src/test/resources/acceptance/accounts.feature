@@ -4,38 +4,45 @@ Feature: Opening and viewing savings accounts
     * hooks.resetClock()
     * url baseUrl
 
-  Scenario: a new account starts empty and announces itself
+  Scenario: a new account starts empty on the current version of its product and announces itself
     Given path 'accounts'
     And def customerId = hooks.uuid()
-    And request { customerId: '#(customerId)', annualRate: 0.025 }
+    And request { customerId: '#(customerId)', productCode: 'INSTANT_ACCESS' }
     When method post
     Then status 201
     And match responseHeaders['Location'][0] == '/accounts/' + response.id
     And match response ==
       """
       {
-        id: '#uuid', customerId: '#(customerId)', annualRate: '0.0250', currency: 'EUR',
-        balance: '0.00',
-        accruedInterest: '0.0000000000', openedAt: '#string'
+        id: '#uuid', customerId: '#(customerId)',
+        product: {
+          code: 'INSTANT_ACCESS', version: 1, name: '#string', annualRate: '0.0250', payoutFrequency: 'MONTHLY'
+        },
+        currency: 'EUR', balance: '0.00', accruedInterest: '0.0000000000', openedAt: '#string'
       }
       """
     * def opened = hooks.awaitEvent(response.id, 'ACCOUNT_OPENED')
-    And match opened.customerId == customerId
-    And match opened.annualRate == '0.0250'
+    And match opened contains
+      """
+      {
+        customerId: '#(customerId)', productCode: 'INSTANT_ACCESS', productVersion: 1, annualRate: '0.0250',
+        payoutFrequency: 'MONTHLY'
+      }
+      """
 
   Scenario: a retried opening request with the same Idempotency-Key opens one account
     * def customerId = hooks.uuid()
     * def key = hooks.uuid()
     Given path 'accounts'
     And header Idempotency-Key = key
-    And request { customerId: '#(customerId)', annualRate: 0.025 }
+    And request { customerId: '#(customerId)', productCode: 'INSTANT_ACCESS' }
     When method post
     Then status 201
     * def first = response
 
     Given path 'accounts'
     And header Idempotency-Key = key
-    And request { customerId: '#(customerId)', annualRate: 0.025 }
+    And request { customerId: '#(customerId)', productCode: 'INSTANT_ACCESS' }
     When method post
     Then status 201
     And match response.id == first.id
@@ -43,18 +50,33 @@ Feature: Opening and viewing savings accounts
 
   Scenario: an Idempotency-Key reused for a different request is refused
     * def key = hooks.uuid()
+    * def customerId = hooks.uuid()
     Given path 'accounts'
     And header Idempotency-Key = key
-    And request { customerId: '#(hooks.uuid())', annualRate: 0.025 }
+    And request { customerId: '#(customerId)', productCode: 'INSTANT_ACCESS' }
     When method post
     Then status 201
 
     Given path 'accounts'
     And header Idempotency-Key = key
-    And request { customerId: '#(hooks.uuid())', annualRate: 0.025 }
+    And request { customerId: '#(customerId)', productCode: 'YEARLY_INTEREST' }
     When method post
     Then status 422
     And match response.detail contains 'already used for a different request'
+
+  Scenario: an account can only be opened on a product that is on sale
+    Given path 'accounts'
+    And request { customerId: '#(hooks.uuid())', productCode: 'NO_SUCH_PRODUCT' }
+    When method post
+    Then status 422
+    And match response.detail == 'Product NO_SUCH_PRODUCT is not on sale'
+
+    * def productCode = hooks.product(0.02, 'MONTHLY')
+    * hooks.stopSelling(productCode)
+    Given path 'accounts'
+    And request { customerId: '#(hooks.uuid())', productCode: '#(productCode)' }
+    When method post
+    Then status 422
 
   Scenario: an unknown account is a 404 problem
     Given path 'accounts', hooks.uuid()
@@ -69,14 +91,13 @@ Feature: Opening and viewing savings accounts
     Then status 400
 
     Examples:
-      | case             | body                                                                         |
-      | missing customer | { annualRate: 0.01 }                                                         |
-      | negative rate    | { customerId: '8a3f1c2e-1111-4a2b-9c3d-0e1f2a3b4c5d', annualRate: -0.01 }    |
-      | absurd rate      | { customerId: '8a3f1c2e-1111-4a2b-9c3d-0e1f2a3b4c5d', annualRate: 0.5 }      |
-      | too many digits  | { customerId: '8a3f1c2e-1111-4a2b-9c3d-0e1f2a3b4c5d', annualRate: 0.012345 } |
+      | case             | body                                                                        |
+      | missing customer | { productCode: 'INSTANT_ACCESS' }                                           |
+      | missing product  | { customerId: '8a3f1c2e-1111-4a2b-9c3d-0e1f2a3b4c5d' }                      |
+      | blank product    | { customerId: '8a3f1c2e-1111-4a2b-9c3d-0e1f2a3b4c5d', productCode: ' ' }    |
 
   Scenario: the API is documented
     Given path 'v3', 'api-docs'
     When method get
     Then status 200
-    And match response.paths contains { '/accounts': '#object', '/accounts/{id}': '#object', '/accounts/{id}/transactions': '#object' }
+    And match response.paths contains { '/products': '#object', '/accounts': '#object', '/accounts/{id}': '#object', '/accounts/{id}/transactions': '#object' }

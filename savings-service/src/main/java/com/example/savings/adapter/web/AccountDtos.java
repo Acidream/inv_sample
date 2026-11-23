@@ -4,11 +4,10 @@ import com.example.savings.application.AccountService.Statement;
 import com.example.savings.domain.Account;
 import com.example.savings.domain.LedgerEntry;
 import com.example.savings.domain.Money;
-import jakarta.validation.constraints.DecimalMax;
-import jakarta.validation.constraints.DecimalMin;
-import jakarta.validation.constraints.Digits;
+import com.example.savings.domain.SavingsProduct;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import java.math.BigDecimal;
+import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -22,16 +21,32 @@ final class AccountDtos {
     private AccountDtos() {
     }
 
-    record OpenAccountRequest(
-            @NotNull UUID customerId,
-            @NotNull @DecimalMin("0") @DecimalMax("0.2") @Digits(integer = 1, fraction = 4) BigDecimal annualRate) {
+    /** @param productCode a product on sale, see {@code GET /products} */
+    record OpenAccountRequest(@NotNull UUID customerId, @NotBlank @Size(max = 40) String productCode) {
     }
 
-    record AccountResponse(UUID id, UUID customerId, String annualRate, String currency, String balance,
+    /** A product version: its terms. {@code annualRate} is a decimal fraction ("0.0250" = 2.5 % p.a.). */
+    record ProductResponse(String code, int version, String name, String annualRate, String payoutFrequency) {
+
+        static ProductResponse from(SavingsProduct product) {
+            return new ProductResponse(product.code(), product.version(), product.name(),
+                    product.annualRate().toPlainString(), product.payoutFrequency().name());
+        }
+    }
+
+    record ProductsResponse(List<ProductResponse> items) {
+
+        static ProductsResponse from(List<SavingsProduct> products) {
+            return new ProductsResponse(products.stream().map(ProductResponse::from).toList());
+        }
+    }
+
+    /** {@code product} is the version the account was opened on; its terms apply for the account's life. */
+    record AccountResponse(UUID id, UUID customerId, ProductResponse product, String currency, String balance,
             String accruedInterest, Instant openedAt) {
 
         static AccountResponse from(Account account) {
-            return new AccountResponse(account.id(), account.customerId(), account.annualRate().toPlainString(),
+            return new AccountResponse(account.id(), account.customerId(), ProductResponse.from(account.product()),
                     Money.CURRENCY, account.balance().toString(), account.accruedInterest().toPlainString(),
                     account.openedAt());
         }

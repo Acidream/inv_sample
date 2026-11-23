@@ -31,9 +31,19 @@ message AccountEvent {
   }
 }
 
+// The account was opened on one version of a savings product and keeps its terms for life.
 message AccountOpened {
+  enum PayoutFrequency {
+    PAYOUT_FREQUENCY_UNSPECIFIED = 0;
+    MONTHLY = 1;
+    QUARTERLY = 2;
+    YEARLY = 3;
+  }
   string customer_id = 1;
-  string annual_rate = 2;          // decimal fraction, e.g. "0.0250" = 2.5 % p.a.
+  string annual_rate = 2;          // decimal fraction, e.g. "0.0250" = 2.5 % p.a.; the product version's rate
+  string product_code = 3;         // e.g. "INSTANT_ACCESS"
+  int32 product_version = 4;
+  PayoutFrequency payout_frequency = 5;
 }
 
 message MoneyDeposited {
@@ -66,8 +76,11 @@ message WithdrawalReturned {
   common.v1.Money balance = 3;
 }
 
+// Interest earned over one payout period of the account's product was credited.
 message InterestPaid {
-  string period = 1;               // ISO year-month the interest was earned in, e.g. "2026-10"
+  string period = 1;               // "2026-10" (monthly), "2026-Q4" (quarterly) or "2026" (yearly)
   common.v1.Money amount = 2;
   common.v1.Money balance = 3;
+  string period_start = 4;         // ISO date, first day of the period (Europe/Berlin)
+  string period_end = 5;           // ISO date, last day of the period, inclusive
 }

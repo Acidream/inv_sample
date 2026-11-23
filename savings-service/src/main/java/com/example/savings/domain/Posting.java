@@ -70,7 +70,7 @@ public record Posting(UUID accountId, Type type, String reference, LocalDate val
     }
 
     /**
-     * One day's interest: an expense for the bank, owed to the customer until the monthly payout.
+     * One day's interest: an expense for the bank, owed to the customer until the next payout.
      * Sub-cent precision; the payout later moves the rounded amount from payable to the customer.
      */
     public static Posting interestAccrual(UUID accountId, LocalDate day, BigDecimal interest, Instant bookedAt) {

@@ -23,6 +23,8 @@ import com.example.savings.domain.AccountEvent.WithdrawalRejected;
 import com.example.savings.domain.AccountEvent.WithdrawalReturned;
 import com.example.savings.domain.IllegalTransferException;
 import com.example.savings.domain.Money;
+import com.example.savings.domain.PayoutFrequency;
+import com.example.savings.domain.SavingsProduct;
 import com.example.savings.domain.Transfer;
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -56,7 +58,8 @@ class PaymentInstructionHandlerTest {
     void setUp() {
         handler = new PaymentInstructionHandler(accounts, transfers, bookkeeping, processedEvents, events, metrics,
                 Clock.fixed(NOW, ZoneOffset.UTC));
-        account = Account.open(UUID.randomUUID(), BigDecimal.ZERO, NOW, ZoneOffset.UTC);
+        account = Account.open(UUID.randomUUID(),
+                new SavingsProduct("TEST", 1, "Test", BigDecimal.ZERO, PayoutFrequency.MONTHLY), NOW, ZoneOffset.UTC);
     }
 
     @Test

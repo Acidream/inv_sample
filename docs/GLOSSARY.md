@@ -4,7 +4,10 @@ Terms as they are used in code, events and docs. If code and glossary disagree, 
 
 | Term | Meaning | In code |
 |---|---|---|
-| **Account** | A customer's EUR savings account with a fixed variable rate. The aggregate that guards every balance change. | `domain.Account` |
+| **Account** | A customer's EUR savings account, opened on one product version whose terms it keeps. The aggregate that guards every balance change. | `domain.Account` |
+| **Product** | What a customer opens, e.g. `INSTANT_ACCESS`. Its terms live in versions; it can be taken off sale. | `savings_product`, `GET /products` |
+| **Product version** | One immutable set of terms of a product: annual rate and payout frequency, valid from a point in time. The current version is the latest one whose `valid_from` has passed. | `domain.SavingsProduct`, `savings_product_version` |
+| **Payout frequency** | How often a product credits interest: MONTHLY, QUARTERLY or YEARLY, in calendar periods. | `domain.PayoutFrequency` |
 | **Balance** | Money on the account according to the ledger. Never negative: the account and the database refuse it. | `Account.balance()` |
 | **Ledger** | Append-only list of bookings per account. Never updated or deleted; corrections are new entries. | `domain.LedgerEntry`, `ledger_entry` |
 | **Ledger entry** | One booking: entry number, type (DEPOSIT, WITHDRAWAL, WITHDRAWAL_RETURN, INTEREST), signed amount, balance after, business reference, booking time. | `LedgerEntry` |
@@ -16,13 +19,13 @@ Terms as they are used in code, events and docs. If code and glossary disagree, 
 | **Deposit** | Transfer in. The current account was already debited; Savings credits at once. | `Account.deposit` |
 | **Withdrawal** | Transfer out. Debited at once if the balance allows it, otherwise rejected. Single-phase: no holds. | `Account.withdraw` |
 | **Return** | Compensation: the current account refused a withdrawal, Savings credits it back. Once per transfer. | `Transfer.markReturned`, `Account.creditReturnedWithdrawal` |
-| **Annual rate** | Interest rate per year as a decimal fraction (`0.0250` = 2.5 % p.a.), 4 fraction digits. | `Account.annualRate` |
+| **Annual rate** | Interest rate per year as a decimal fraction (`0.0250` = 2.5 % p.a.), 4 fraction digits. Set by the product version. | `SavingsProduct.annualRate` |
 | **Business day / zone** | Calendar days are counted in `Europe/Berlin`. "End of day" means midnight Berlin time. | `SavingsPolicy.businessZone` |
 | **End-of-day balance** | Balance after the last ledger entry booked before midnight (Berlin) of that day. Interest is based on it. | `Ledger.balanceAt` |
 | **Accrual** | Interest earned for one day, ACT/365: `end-of-day balance × rate ÷ 365`, 10 fraction digits, never negative. | `Interest.forOneDay`, `interest_accrual` |
 | **Accrued interest** | Sum of accruals not yet paid out. Sub-cent precision. | `Account.accruedInterest` |
-| **Payout** | Monthly credit of accrued interest, rounded down to cents. The rounding remainder (under a cent) stays accrued. | `Account.payOutInterest` |
-| **Period** | The calendar month (`YYYY-MM`) a payout belongs to. | `InterestPaid.period` |
+| **Payout** | Credit of accrued interest at the end of each payout period, rounded down to cents. The rounding remainder (under a cent) stays accrued. | `Account.payOutInterest` |
+| **Period** | The payout period a payout belongs to: `2026-01` (month), `2026-Q1` (quarter) or `2026` (year), with its first and last day. | `domain.InterestPeriod`, `InterestPaid.period` |
 | **Account event** | A fact Savings publishes for others: AccountOpened, MoneyDeposited, MoneyWithdrawn, WithdrawalRejected, WithdrawalReturned, InterestPaid. Every instruction gets exactly one. | `domain.AccountEvent`, `savings.v1.AccountEvent` |
 | **Posting** | The bank-wide, double-entry view of a booking: lines whose debits equal their credits, published to Finance. Every ledger entry and every accrual has one; a rejected withdrawal doesn't. | `domain.Posting`, `savings.v1.Posting` |
 | **Book account** | A logical account in the bank's books: `customer:<id>`, `transfer-clearing`, `interest-expense`, `interest-payable`. Finance maps them to its chart of accounts. | `domain.BookAccount` |

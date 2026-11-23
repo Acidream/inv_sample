@@ -4,10 +4,10 @@ import com.example.savings.application.port.AccountEventPublisher;
 import com.example.savings.application.port.AccountOpenRequests;
 import com.example.savings.application.port.Accounts;
 import com.example.savings.application.port.Ledger;
+import com.example.savings.application.port.Products;
 import com.example.savings.domain.Account;
 import com.example.savings.domain.AccountEvent.AccountOpened;
 import com.example.savings.domain.LedgerEntry;
-import java.math.BigDecimal;
 import java.time.Clock;
 import java.util.List;
 import java.util.Optional;
@@ -26,15 +26,17 @@ public class AccountService {
     }
 
     private final Accounts accounts;
+    private final Products products;
     private final AccountOpenRequests openRequests;
     private final Ledger ledger;
     private final AccountEventPublisher events;
     private final SavingsPolicy policy;
     private final Clock clock;
 
-    public AccountService(Accounts accounts, AccountOpenRequests openRequests, Ledger ledger,
+    public AccountService(Accounts accounts, Products products, AccountOpenRequests openRequests, Ledger ledger,
             AccountEventPublisher events, SavingsPolicy policy, Clock clock) {
         this.accounts = accounts;
+        this.products = products;
         this.openRequests = openRequests;
         this.ledger = ledger;
         this.events = events;
@@ -43,29 +45,33 @@ public class AccountService {
     }
 
     /**
-     * Opens an account. With an idempotency key, repeating the same request returns the account the
-     * first one opened; using the key for a different request is refused.
+     * Opens an account on the current version of a product; the account keeps that version's terms.
+     * With an idempotency key, repeating the same request returns the account the first one opened,
+     * even if the product has since changed; using the key for a different request is refused.
      *
      * @param idempotencyKey optional, chosen by the client
+     * @throws ProductNotOnSaleException if there is no such product on sale
      */
     @Transactional
-    public Opened open(UUID customerId, BigDecimal annualRate, String idempotencyKey) {
+    public Opened open(UUID customerId, String productCode, String idempotencyKey) {
         if (idempotencyKey != null) {
             var earlier = openRequests.find(idempotencyKey);
             if (earlier.isPresent()) {
                 var account = accounts.get(earlier.get());
-                if (!account.customerId().equals(customerId) || account.annualRate().compareTo(annualRate) != 0) {
+                if (!account.customerId().equals(customerId) || !account.product().code().equals(productCode)) {
                     throw new IdempotencyKeyReusedException(idempotencyKey);
                 }
                 return new Opened(account, false);
             }
         }
-        var account = Account.open(customerId, annualRate, clock.instant(), policy.businessZone());
+        var now = clock.instant();
+        var product = products.onSale(productCode, now).orElseThrow(() -> new ProductNotOnSaleException(productCode));
+        var account = Account.open(customerId, product, now, policy.businessZone());
         accounts.add(account);
         if (idempotencyKey != null) {
             openRequests.record(idempotencyKey, account.id());
         }
-        events.publish(new AccountOpened(account.id(), customerId, account.annualRate()));
+        events.publish(new AccountOpened(account.id(), customerId, product));
         return new Opened(account, true);
     }
 

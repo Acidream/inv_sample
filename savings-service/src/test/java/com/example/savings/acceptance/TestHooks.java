@@ -14,10 +14,12 @@ import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.util.JsonFormat;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.context.ApplicationContext;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -38,6 +40,41 @@ public final class TestHooks {
 
     public static String uuid() {
         return UUID.randomUUID().toString();
+    }
+
+    // --- products ---------------------------------------------------------------------------------
+
+    /**
+     * Publishes a new product on sale, valid since long before any test clock, as a migration would.
+     * Features use it to get exact terms for their arithmetic. @return the product code
+     */
+    public static String product(Object annualRate, String payoutFrequency) {
+        var code = "TEST_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase();
+        jdbc().sql("insert into savings_product (code, name, on_sale) values (:code, :name, true)")
+                .param("code", code)
+                .param("name", "Test product " + code)
+                .update();
+        productVersion(code, 1, annualRate, payoutFrequency, "2000-01-01T00:00:00Z");
+        return code;
+    }
+
+    /** Publishes a further version of a product, taking effect at {@code validFrom} (ISO date-time with offset). */
+    public static void productVersion(String code, int version, Object annualRate, String payoutFrequency,
+            String validFrom) {
+        jdbc().sql("insert into savings_product_version"
+                        + " (product_code, version, annual_rate, payout_frequency, valid_from)"
+                        + " values (:code, :version, :rate, :payout, :validFrom)")
+                .param("code", code)
+                .param("version", version)
+                .param("rate", new BigDecimal(annualRate.toString()))
+                .param("payout", payoutFrequency)
+                .param("validFrom", OffsetDateTime.parse(validFrom))
+                .update();
+    }
+
+    /** Takes a product off sale: no new accounts, existing ones keep their terms. */
+    public static void stopSelling(String code) {
+        jdbc().sql("update savings_product set on_sale = false where code = :code").param("code", code).update();
     }
 
     // --- time and jobs ----------------------------------------------------------------------------
@@ -186,6 +223,10 @@ public final class TestHooks {
     private static void send(PaymentInstruction.Builder message) {
         var built = message.build();
         kafka().send(built.getAccountId(), built.toByteArray());
+    }
+
+    private static JdbcClient jdbc() {
+        return context.getBean(JdbcClient.class);
     }
 
     private static KafkaTestSupport kafka() {

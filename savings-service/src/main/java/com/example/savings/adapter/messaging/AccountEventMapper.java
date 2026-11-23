@@ -29,7 +29,10 @@ final class AccountEventMapper {
         switch (event) {
             case AccountEvent.AccountOpened e -> envelope.setAccountOpened(AccountOpened.newBuilder()
                     .setCustomerId(e.customerId().toString())
-                    .setAnnualRate(e.annualRate().toPlainString()));
+                    .setAnnualRate(e.product().annualRate().toPlainString())
+                    .setProductCode(e.product().code())
+                    .setProductVersion(e.product().version())
+                    .setPayoutFrequency(AccountOpened.PayoutFrequency.valueOf(e.product().payoutFrequency().name())));
             case AccountEvent.MoneyDeposited e -> envelope.setMoneyDeposited(MoneyDeposited.newBuilder()
                     .setTransferId(e.transferId())
                     .setAmount(money(e.amount()))
@@ -47,7 +50,9 @@ final class AccountEventMapper {
                     .setAmount(money(e.amount()))
                     .setBalance(money(e.balance())));
             case AccountEvent.InterestPaid e -> envelope.setInterestPaid(InterestPaid.newBuilder()
-                    .setPeriod(e.period().toString())
+                    .setPeriod(e.period().label())
+                    .setPeriodStart(e.period().start().toString())
+                    .setPeriodEnd(e.period().end().toString())
                     .setAmount(money(e.amount()))
                     .setBalance(money(e.balance())));
         }

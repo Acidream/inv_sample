@@ -4,7 +4,6 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.YearMonth;
 import java.time.ZoneId;
 import java.util.Objects;
 import java.util.Optional;
@@ -20,6 +19,9 @@ import java.util.UUID;
  * without this, a later entry could get an earlier {@code bookedAt} and sort before the entry whose
  * balance it builds on.
  *
+ * <p>Its terms come from the {@link SavingsProduct} version it was opened on, kept for the account's
+ * whole life (ADR 0017).
+ *
  * <p>Plain Java: persistence maps it through {@link State} (ADR 0016). {@code version} is the
  * optimistic-concurrency token of the stored aggregate (null until first stored); the domain never
  * interprets it, persistence refuses to store a change made to an outdated version.
@@ -27,14 +29,13 @@ import java.util.UUID;
 public final class Account {
 
     /** Everything that is stored, for persistence to map; invariants are checked on {@link #restore}. */
-    public record State(UUID id, UUID customerId, BigDecimal annualRate, Money balance, BigDecimal accruedInterest,
+    public record State(UUID id, UUID customerId, SavingsProduct product, Money balance, BigDecimal accruedInterest,
             LocalDate lastAccrualDate, Instant openedAt, long lastEntryNo, Instant lastBookedAt, Long version) {
     }
 
     private final UUID id;
     private final UUID customerId;
-    /** Decimal fraction per year, e.g. 0.0250 = 2.5 % p.a. */
-    private final BigDecimal annualRate;
+    private final SavingsProduct product;
     private final Instant openedAt;
     private final Long version;
     private Money balance;
@@ -50,10 +51,7 @@ public final class Account {
     private Account(State state) {
         this.id = Objects.requireNonNull(state.id(), "id");
         this.customerId = Objects.requireNonNull(state.customerId(), "customerId");
-        if (state.annualRate().signum() < 0) {
-            throw new IllegalArgumentException("Annual rate must not be negative: " + state.annualRate());
-        }
-        this.annualRate = state.annualRate().setScale(4, RoundingMode.UNNECESSARY);
+        this.product = Objects.requireNonNull(state.product(), "product");
         this.balance = Objects.requireNonNull(state.balance(), "balance");
         if (balance.isNegative()) {
             throw new IllegalArgumentException("Balance must not be negative: " + balance);
@@ -66,8 +64,8 @@ public final class Account {
         this.version = state.version();
     }
 
-    public static Account open(UUID customerId, BigDecimal annualRate, Instant now, ZoneId zone) {
-        return new Account(new State(UUID.randomUUID(), customerId, annualRate, Money.ZERO, BigDecimal.ZERO,
+    public static Account open(UUID customerId, SavingsProduct product, Instant now, ZoneId zone) {
+        return new Account(new State(UUID.randomUUID(), customerId, product, Money.ZERO, BigDecimal.ZERO,
                 LocalDate.ofInstant(now, zone).minusDays(1), now, 0, now, null));
     }
 
@@ -77,7 +75,7 @@ public final class Account {
     }
 
     public State state() {
-        return new State(id, customerId, annualRate, balance, accruedInterest, lastAccrualDate, openedAt, lastEntryNo,
+        return new State(id, customerId, product, balance, accruedInterest, lastAccrualDate, openedAt, lastEntryNo,
                 lastBookedAt, version);
     }
 
@@ -122,10 +120,20 @@ public final class Account {
         if (!day.equals(nextAccrualDate())) {
             throw new IllegalStateException("Expected accrual for " + nextAccrualDate() + " but got " + day);
         }
-        var interest = Interest.forOneDay(endOfDayBalance, annualRate);
+        var interest = Interest.forOneDay(endOfDayBalance, product.annualRate());
         accruedInterest = accruedInterest.add(interest);
         lastAccrualDate = day;
         return interest;
+    }
+
+    /** True if the day is the last of a payout period of the account's product. */
+    public boolean payoutDueAfter(LocalDate day) {
+        return product.payoutFrequency().endsPeriodOn(day);
+    }
+
+    /** The payout period of the account's product that the day belongs to. */
+    public InterestPeriod payoutPeriodOf(LocalDate day) {
+        return product.payoutFrequency().periodContaining(day);
     }
 
     /**
@@ -133,13 +141,13 @@ public final class Account {
      * stays accrued and is paid with a later period, so no fraction of a cent is ever lost or invented,
      * and none is paid before it has been earned: accrued interest never goes negative.
      */
-    public Optional<LedgerEntry> payOutInterest(YearMonth period, Instant now) {
+    public Optional<LedgerEntry> payOutInterest(InterestPeriod period, Instant now) {
         var payout = Money.roundedDown(accruedInterest);
         if (!payout.isPositive()) {
             return Optional.empty();
         }
         accruedInterest = accruedInterest.subtract(payout.amount());
-        return Optional.of(book(EntryType.INTEREST, payout, "interest:" + period, now));
+        return Optional.of(book(EntryType.INTEREST, payout, "interest:" + period.label(), now));
     }
 
     // --- state --------------------------------------------------------------------------------
@@ -160,8 +168,12 @@ public final class Account {
         return customerId;
     }
 
+    public SavingsProduct product() {
+        return product;
+    }
+
     public BigDecimal annualRate() {
-        return annualRate;
+        return product.annualRate();
     }
 
     public Money balance() {

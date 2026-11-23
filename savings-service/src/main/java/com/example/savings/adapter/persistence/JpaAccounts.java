@@ -14,14 +14,19 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
-/** {@link Accounts} on JPA: maps between {@link Account} and {@link AccountEntity}. */
+/**
+ * {@link Accounts} on JPA: maps between {@link Account} and {@link AccountEntity}. The entity stores
+ * the product version by its key; the terms come from the catalogue.
+ */
 @Component
 class JpaAccounts implements Accounts {
 
     private final AccountJpaRepository repository;
+    private final JdbcProducts products;
 
-    JpaAccounts(AccountJpaRepository repository) {
+    JpaAccounts(AccountJpaRepository repository, JdbcProducts products) {
         this.repository = repository;
+        this.products = products;
     }
 
     @Override
@@ -33,7 +38,8 @@ class JpaAccounts implements Accounts {
     @Override
     public Account get(UUID id) {
         return repository.findById(id)
-                .map(entity -> Account.restore(entity.toState()))
+                .map(entity -> Account.restore(entity.toState(products.version(entity.productCode(),
+                        entity.productVersion()))))
                 .orElseThrow(() -> new UnknownAccountException(id));
     }
 

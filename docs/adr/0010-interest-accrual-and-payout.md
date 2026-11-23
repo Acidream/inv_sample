@@ -1,6 +1,6 @@
 # 0010 – Daily ACT/365 accrual from end-of-day balances, monthly payout
 
-Date: 2026-11-22 · Status: Accepted
+Date: 2026-11-22 · Status: Accepted; payout frequency amended by [0017](0017-savings-products.md)
 
 ## Context
 
@@ -17,7 +17,8 @@ missed or repeated job runs, over a table with potentially millions of accounts.
 - Accruals are kept with 10 fraction digits in `interest_accrual` (one row per account and day: the
   audit trail, and a primary key that makes double accrual impossible).
 - After the last day of a month is accrued, the accrued amount is **rounded down to cents and
-  credited**; the sub-cent remainder stays accrued for the next month. Accrued interest is therefore
+  credited**; the sub-cent remainder stays accrued for the next month. Since ADR 0017 the period is
+  the payout period of the account's product (month, quarter or year), not always the month. Accrued interest is therefore
   never negative: nothing is paid before it is earned (ADR 0004).
 
 **Execution** (`InterestAccrualJob`, `InterestService`)
@@ -44,4 +45,4 @@ missed or repeated job runs, over a table with potentially millions of accounts.
   the interest credit in their balance. Fix: a `value_date` on ledger entries.
 - Scaling path if one sequential job gets too slow: split the id range across workers (several
   ShedLock names or a work queue); the per-account transaction design already allows it.
-- Rate changes need a rate history (ADR 0001).
+- Rate changes for existing accounts need a rate history (ADR 0001, 0017).

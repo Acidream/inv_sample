@@ -7,7 +7,6 @@ import com.example.savings.application.port.SavingsMetrics;
 import com.example.savings.domain.AccountEvent.InterestPaid;
 import java.time.Clock;
 import java.time.LocalDate;
-import java.time.YearMonth;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
@@ -15,11 +14,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Daily accrual and monthly payout. For every day not yet accrued, the end-of-day balance is read
+ * Daily accrual and payout at the end of each payout period of the account's product (monthly,
+ * quarterly or yearly). For every day not yet accrued, the end-of-day balance is read
  * from the ledger (not the current balance), so a catch-up after missed runs accrues the same amounts
  * for the same days. One known difference (ADR 0010): a payout made during a catch-up is booked when
  * the catch-up runs, so the days between month end and that run don't earn interest on it. Interest
- * is paid out after the last day of each month has been accrued.
+ * is paid out after the last day of a payout period has been accrued.
  */
 @Service
 public class InterestService {
@@ -74,8 +74,8 @@ public class InterestService {
             var interest = account.accrueDay(day, ledger.balanceAt(accountId, endOfDay));
             bookkeeping.accrue(accountId, day, interest);
 
-            if (day.equals(day.withDayOfMonth(day.lengthOfMonth()))) {
-                var period = YearMonth.from(day);
+            if (account.payoutDueAfter(day)) {
+                var period = account.payoutPeriodOf(day);
                 account.payOutInterest(period, clock.instant()).ifPresent(entry -> {
                     bookkeeping.book(entry);
                     events.publish(new InterestPaid(accountId, period, entry.amount(), entry.balanceAfter()));

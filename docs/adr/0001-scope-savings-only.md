@@ -23,7 +23,8 @@ account, daily interest accrual and monthly payout. Deliberately left out:
 | **S3** | Nothing needs object storage yet. | Monthly statements as PDF/CSV exports. |
 | **Authentication/authorisation** | Orthogonal to the domain; would mostly be configuration. | JWT validation at a gateway or Spring Security resource server, customer id taken from the token rather than the request. |
 | **Multi-currency** | EUR-only product. `Money` hard-codes EUR and the wire format already carries a currency code, which is validated. | Currency on `Money` and per account. |
-| **Rate changes / rate history** | One fixed rate per account. | A `rate_period` table and accrual picking the rate valid on each day. |
+| **Rate changes for existing accounts** | An account keeps the terms of the product version it was opened on (ADR 0017); new rates apply to new accounts. | Variable-rate products: a rate history per product that its accounts follow, and accrual picking the rate valid on each day. |
+| **Notice accounts, term deposits, tiered rates** | The products sold are instant access, differing in rate and payout frequency (ADR 0017). | New flows each: scheduled withdrawals, maturity, rate tiers in the accrual. |
 | **Closing accounts** | Not needed to demonstrate the flows. | Close with final interest payout, reject further instructions. |
 
 ## Consequences
