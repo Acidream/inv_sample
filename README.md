@@ -1,9 +1,10 @@
 # savings-platform
 
-Savings products and current accounts in an event-driven architecture. A customer orders a savings
-product and funds it from their current account. The transfer service moves the money between the
-two ledgers, interest accrues daily and is paid per the product's payout period. Built to be **correct and auditable**
-first, and as simple as that allows.
+Savings products, investments and current accounts in an event-driven architecture. A customer
+orders a savings product and funds it from their current account, or buys ETFs and stocks for an
+amount of money. The transfer service moves the money between the ledgers, interest accrues daily and
+is paid per the product's payout period, and orders reach a broker over FIX. Built to be **correct and
+auditable** first, and as simple as that allows.
 
 ## The big picture
 
@@ -12,13 +13,16 @@ first, and as simple as that allows.
 Topics: `transfer-requests` = `payments.transfer-requests.v1`, `savings-instructions` =
 `payments.savings-instructions.v1`, `account-events` = `savings.account-events.v1`, `transfer-events` =
 `payments.transfer-events.v1`, `ca-instructions` = `payments.current-account-instructions.v1`,
-`ca-events` = `current-account.events.v1`, `postings` = `savings.postings.v1`. Until the gateway
-exists, the app calls each service directly. Each service's REST commands go through its own input
-topic (`savings.commands.v1`, `current-account.commands.v1`, `payments.transfer-requests.v1`), left
-out of the picture. The planned parts are what [ADR 0001](docs/adr/0001-scope-savings-only.md) leaves
-out and [0021](docs/adr/0021-current-account-service.md) defers.
+`ca-events` = `current-account.events.v1`, `postings` = `savings.postings.v1` and
+`investments.postings.v1`, `investment-instructions` = `payments.investment-instructions.v1`,
+`portfolio-events` = `investments.account-events.v1`, `broker-orders` = `broker.orders.v1`,
+`broker-executions` = `broker.executions.v1`. Until the API gateway exists, the app calls each service
+directly. Each service's REST commands go through its own input topic (`savings.commands.v1`,
+`current-account.commands.v1`, `investments.commands.v1`, `payments.transfer-requests.v1`), left out of
+the picture. The planned parts are what [ADR 0001](docs/adr/0001-scope-savings-only.md) leaves out and
+[0021](docs/adr/0021-current-account-service.md) defers.
 
-Three services, each owning its data, connected only through Kafka contracts
+Five services, each owning its data, connected only through Kafka contracts
 ([ADR 0018](docs/adr/0018-service-structure.md)):
 
 - **savings-service** sells products and keeps the savings ledger. An order opens an account on the
@@ -30,6 +34,12 @@ Three services, each owning its data, connected only through Kafka contracts
   blocking, incoming payments from outside the bank. It answers the transfer service's debits and
   credits, and decides on its own rules whether money may leave
   ([0021](docs/adr/0021-current-account-service.md)).
+- **investment-service** keeps portfolios: a buy pulls its money from the current account first, then
+  goes to the broker; holdings are FIFO lots; refunds and proceeds go back to the current account
+  ([0026](docs/adr/0026-investment-service.md)). To the transfer service a portfolio is an account of a
+  third ledger ([0028](docs/adr/0028-investments-as-a-third-ledger.md)).
+- **fix-gateway** holds the one FIX 4.4 session to the broker and translates between it and Kafka:
+  each order placed once, each report published once ([0027](docs/adr/0027-fix-gateway.md)).
 
 Every state change starts as a message on a service's own input topic. REST accepts commands into
 that log (`202 Accepted`) and answers queries, so a service's inputs can be replayed
@@ -89,6 +99,13 @@ would change the design.
   cent, with the remainder carried over.
 - **Bookkeeping for Finance**: every booking and every daily accrual is also published as a balanced
   double-entry posting, so the bank's general ledger can be kept and reconciled from it.
+- **Investments**: a portfolio is opened for a customer and their current account. A buy names an
+  amount of money (at least 1.00) and an ETF or stock by ISIN; the money is pulled from the current
+  account, then the market order goes to the broker, which fills fractional units. Whatever isn't
+  spent (partly filled, expired, rejected) is refunded. A sell names units; it may only take units not
+  reserved by other open sells, takes the oldest lots first and records the realised gain; the
+  proceeds go to the current account. A refund or payout the current account refuses (blocked) stays
+  on the portfolio as unpaid, and is retried when the account is unblocked and once a day.
 
 ```mermaid
 sequenceDiagram
@@ -113,9 +130,13 @@ sequenceDiagram
 
 ## Other assumptions
 
-- **Money only moves between a customer's current account and their savings**, so every transfer
-  has a known outcome at once, and there are no holds
-  ([0015](docs/adr/0015-transfers-only-with-the-current-account.md)).
+- **Money only moves between a customer's current account and their savings or portfolio**, so
+  every transfer has a known outcome at once, and there are no holds
+  ([0015](docs/adr/0015-transfers-only-with-the-current-account.md), [0028](docs/adr/0028-investments-as-a-third-ledger.md)).
+  What is uncertain is a securities order, and that uncertainty stays inside investments and the
+  gateway ([0026](docs/adr/0026-investment-service.md)).
+- **Investments have no cash account, market data, fees, taxes, dividends, limit orders or
+  cancellation yet**; every weekday is a trading day ([0026](docs/adr/0026-investment-service.md)).
 - **The transfer service knows accounts, not products**: whether a product allows a withdrawal is
   the product's answer ([0018](docs/adr/0018-service-structure.md)).
 - **An account keeps its product version's terms for life**: new rates apply to new accounts only.
@@ -153,18 +174,21 @@ sequenceDiagram
 | Architecture | Hexagonal layers; plain-Java domain; services never import each other; enforced by Checkstyle import control and ArchUnit | [0003](docs/adr/0003-hexagonal-layers-with-jpa-on-the-domain.md), [0016](docs/adr/0016-domain-model-separate-from-jpa-entities.md) |
 | Delivery | Acceptance tests first, real infrastructure in tests | [0012](docs/adr/0012-acceptance-tests-first.md) |
 | Operations | Business metrics, dashboard, alerts | [0013](docs/adr/0013-observability.md) |
-| What's left out, and why | Taxes, campaigns, auth, S3, ... | [0001](docs/adr/0001-scope-savings-only.md) |
+| Investments | Buys by amount, money first, then the broker; FIFO lots; refunds and proceeds as payouts that may come back unpaid | [0026](docs/adr/0026-investment-service.md) |
+| A third ledger | Portfolios take savings' instructions on a topic of their own; the transfer service still knows no products | [0028](docs/adr/0028-investments-as-a-third-ledger.md) |
+| FIX to a broker | A gateway owns the session; orders marked before they leave, status requests after every logon, reports de-duplicated by exec id | [0027](docs/adr/0027-fix-gateway.md) |
+| What's left out, and why | Taxes, campaigns, auth, S3, ... | [0001](docs/adr/0001-scope-savings-only.md), [0026](docs/adr/0026-investment-service.md) |
 
 All decisions: [docs/adr](docs/adr/README.md) · Vocabulary: [docs/GLOSSARY.md](docs/GLOSSARY.md)
 
 ## Stack and build
 
 Java 25 · Spring Boot 4.2 · Hibernate 7 · Flyway · PostgreSQL 17 · Kafka 4 · Protobuf ·
-Micrometer/Prometheus/Grafana · JUnit 6 · AssertJ · Mockito · Testcontainers · Karate · ArchUnit ·
+QuickFIX/J (FIX 4.4) · Micrometer/Prometheus/Grafana · JUnit 6 · AssertJ · Mockito · Testcontainers · Karate · ArchUnit ·
 Checkstyle · GitHub Actions
 
 ```
-./gradlew build          # Checkstyle, unit, architecture and acceptance tests of all three services (needs Docker)
+./gradlew build          # Checkstyle, unit, architecture and acceptance tests of all services (needs Docker)
 ```
 
 Test methods are named `methodUnderTest_Given_Expected`, e.g. `debit_OneCentBeyondOverdraftLimit_IsRejected`;
@@ -188,6 +212,15 @@ current-account-service/
   domain/                   CurrentAccount, Booking, TransferAnswer, IncomingPayment, Money
   application/              CurrentAccountService and its ports
   adapter/                  web · messaging (listeners, command log, outbox) · persistence (JDBC)
+investment-service/
+  domain/                   Portfolio, CashEntry, Order, Fill, Holding, Lot, Payout, Posting, Money, Quantity, Price
+  application/              InvestmentService, MoneyMovements, Executions and their ports
+  adapter/                  web · messaging · persistence (JDBC) · scheduling · metrics
+fix-gateway/
+  domain/                   BrokerOrder
+  application/              GatewayService, Dispatcher and their ports
+  adapter/                  fix (QuickFIX/J, the session) · messaging · persistence (JDBC) · scheduling
+execution-simulator/        plays the broker locally: a FIX 4.4 acceptor that fills at fixed prices
 ops/                        Prometheus config and alerts, Grafana provisioning and dashboard
 config/checkstyle/          code style and import-control.xml (which layer and service may import what)
 docs/                       ADRs and glossary
@@ -215,6 +248,18 @@ Current accounts:
 - [accounts.feature](current-account-service/src/test/resources/acceptance/accounts.feature): opening, incoming payments booked once, unknown accounts, blocking and unblocking, validation
 - [transfers.feature](current-account-service/src/test/resources/acceptance/transfers.feature): debits within and beyond the overdraft, credits, blocked accounts, instructions answered once, reused transfer id → DLT
 
+Investments:
+
+- [portfolios.feature](investment-service/src/test/resources/acceptance/portfolios.feature): opening, idempotent `POST`, instruments on sale
+- [buys.feature](investment-service/src/test/resources/acceptance/buys.feature): money first, fills, refunds of what wasn't spent, funding failed, rejected and off-sale instruments, postings, duplicate fills, fills beyond the money → DLT, money nobody ordered paid back
+- [sells.feature](investment-service/src/test/resources/acceptance/sells.feature): FIFO lots and realised gains, reserved units, expiry releasing units, selling off-sale instruments
+- [payouts.feature](investment-service/src/test/resources/acceptance/payouts.feature): a refused refund coming back unpaid, retried on unblocking and daily, withdrawals only for payouts asked for
+
+FIX gateway:
+
+- [orders.feature](fix-gateway/src/test/resources/acceptance/orders.feature): `NewOrderSingle` for buys and sells, reports in order, placed once, fills reported once, rejection, expiry, cancellation, duplicate rejections, expiry before sending
+- [session.feature](fix-gateway/src/test/resources/acceptance/session.feature): orders waiting while the session is down, status requests after a logon, an order the broker lost
+
 ## Running it locally
 
 ```bash
@@ -227,6 +272,8 @@ docker compose up --build
 | Savings API docs | http://localhost:8080/swagger-ui.html |
 | Transfers API docs | http://localhost:8081/swagger-ui.html |
 | Current accounts API docs | http://localhost:8082/swagger-ui.html |
+| Investments API docs | http://localhost:8083/swagger-ui.html |
+| FIX gateway health | http://localhost:8084/actuator/health |
 | Prometheus (alerts) | http://localhost:9090/alerts |
 | Grafana (dashboard "Savings") | http://localhost:3000 |
 
@@ -253,6 +300,21 @@ curl -s -X POST localhost:8081/transfers -H "$JSON" -H "Idempotency-Key: $(uuidg
 curl -s localhost:8080/accounts/$SAVINGS
 curl -s localhost:8080/accounts/$SAVINGS/transactions
 curl -s localhost:8082/current-accounts/$CURRENT/bookings   # salary, -250.00 for the order, +100.00 back
+```
+
+Buy €300 of an ETF from the same current account, then sell part of it (`execution-simulator` fills
+at fixed prices):
+
+```bash
+PORTFOLIO=$(curl -s -X POST localhost:8083/portfolios -H "$JSON" -H "Idempotency-Key: $(uuidgen)" \
+  -d "{\"customerId\":\"$CUSTOMER\",\"referenceAccountId\":\"$CURRENT\"}" | jq -r .portfolioId)
+BUY=$(curl -s -X POST localhost:8083/orders -H "$JSON" -H "Idempotency-Key: $(uuidgen)" \
+  -d "{\"portfolioId\":\"$PORTFOLIO\",\"isin\":\"IE00B4L5Y983\",\"side\":\"BUY\",\"amount\":\"300.00\"}" | jq -r .orderId)
+curl -s localhost:8083/orders/$BUY                      # FUNDING, then FILLED / SETTLED
+curl -s -X POST localhost:8083/orders -H "$JSON" -H "Idempotency-Key: $(uuidgen)" \
+  -d "{\"portfolioId\":\"$PORTFOLIO\",\"isin\":\"IE00B4L5Y983\",\"side\":\"SELL\",\"quantity\":\"1.5\"}"
+curl -s localhost:8083/portfolios/$PORTFOLIO              # holdings: units, FIFO cost basis, last price
+curl -s localhost:8083/portfolios/$PORTFOLIO/transactions # FUNDING, BUY, SELL, PAYOUT
 ```
 
 An order above the current account's balance plus overdraft ends `FUNDING_FAILED` with
@@ -288,6 +350,17 @@ Current accounts (`:8082`):
 | `POST` | `/current-accounts/{accountId}/incoming-payments` | `Idempotency-Key` header (per account), `{ amount }` → `202` + `Location` and `paymentId`; booked once per key; a different payment under the same key → `422` |
 | `GET` | `/current-accounts/{accountId}/incoming-payments/{paymentId}` | `BOOKED`, or `REJECTED` with `rejectionReason` (unknown account, or the balance would exceed what the ledger holds) |
 | `PUT` / `DELETE` | `/current-accounts/{accountId}/block` | `{ reason }` blocks, `DELETE` unblocks → `202`; `404` for an account that isn't open |
+
+Investments (`:8083`):
+
+| Method | Path | |
+|---|---|---|
+| `GET` | `/instruments` | instruments on sale: `isin`, `name`, `type` (`ETF`, `STOCK`) |
+| `POST` | `/portfolios` | `Idempotency-Key` header, `{ customerId, referenceAccountId }` → `202` + `Location` and `portfolioId`, status `RECEIVED`. Same idempotency rules as orders |
+| `GET` | `/portfolios/{portfolioId}` | `holdings` (`quantity`, `reservedForSale`, FIFO `costBasis`, `lastPrice`) and `unpaidPayouts`; `404` until opened |
+| `GET` | `/portfolios/{portfolioId}/transactions?limit=20&cursor=…` | the money ledger, newest first: `FUNDING`, `BUY`, `SELL`, `PAYOUT`, `PAYOUT_RETURN`, signed `amount`, `balanceAfter`, trade details and `realizedGain`; `nextCursor` |
+| `POST` | `/orders` | `Idempotency-Key` header, `{ portfolioId, isin, side: "BUY", amount: "500.00" }` or `{ …, side: "SELL", quantity: "1.5" }` → `202` + `Location` and `orderId` (`ord-…`). Same idempotency rules as savings orders; `404` for a portfolio that isn't open |
+| `GET` | `/orders/{orderId}` | `status` (`FUNDING`, `PLACED`, `PARTIALLY_FILLED`, `FILLED`, `EXPIRED`, `REJECTED`, `FUNDING_FAILED`), `settlement` (`PENDING`, `SETTLED`, `UNPAID`), `filledQuantity`, `filledAmount`, `rejectionReason`, `fills` |
 
 Errors are [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details. A `POST` without an
 `Idempotency-Key` is refused with `400`: the id of what it creates is derived from the key, so the

@@ -126,8 +126,8 @@ public class CurrentAccountService {
         switch (command) {
             case Command.Open open -> open(open);
             case Command.ReceivePayment payment -> receive(payment);
-            case Command.Block block -> changeBlock(block.accountId(), account -> account.block(block.reason()));
-            case Command.Unblock unblock -> changeBlock(unblock.accountId(), CurrentAccount::unblock);
+            case Command.Block block -> changeBlock(block, account -> account.block(block.reason()));
+            case Command.Unblock unblock -> changeBlock(unblock, CurrentAccount::unblock);
         }
     }
 
@@ -178,14 +178,15 @@ public class CurrentAccountService {
                 command.acceptedAt()));
     }
 
-    private void changeBlock(UUID accountId, Consumer<CurrentAccount> change) {
-        var account = accounts.lock(accountId);
+    private void changeBlock(Command command, Consumer<CurrentAccount> change) {
+        var account = accounts.lock(command.accountId());
         if (account.isEmpty()) {
-            log.warn("Ignoring a block change for unknown account {}", accountId);
+            log.warn("Ignoring a block change for unknown account {}", command.accountId());
             return;
         }
         change.accept(account.get());
         accounts.update(account.get());
+        events.blockChanged(account.get(), command.acceptedAt());
     }
 
     // --- instructions from the transfer service ---------------------------------------------------

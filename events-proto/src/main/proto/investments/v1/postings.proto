@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package investments.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option java_multiple_files = true;
+option java_package = "com.example.events.investments.v1";
+
+// Topic: investments.postings.v1 (owned by the Investments team, consumed by Finance for the general ledger).
+// Key:   portfolio_id. Postings of one portfolio are published in order.
+// Delivery is at-least-once: consumers must de-duplicate on posting_id.
+//
+// Money only: securities are held in custody for the customer, off the bank's balance sheet (ADR 0026).
+// Every posting balances. Book accounts:
+//   customer:<portfolio id>  liability, money the bank holds for the customer's orders
+//   transfer-clearing        money in transit between the current account and a portfolio
+//   broker-settlement        money owed to or by the broker for fills
+message Posting {
+  enum Type {
+    TYPE_UNSPECIFIED = 0;
+    FUNDING = 1;            // transfer-clearing -> customer, a buy's money arrived
+    BUY_FILL = 2;           // customer          -> broker-settlement
+    SELL_FILL = 3;          // broker-settlement -> customer
+    PAYOUT = 4;             // customer          -> transfer-clearing, a refund or proceeds
+    PAYOUT_RETURN = 5;      // transfer-clearing -> customer, the current account refused a payout
+  }
+
+  message Line {
+    enum Side {
+      SIDE_UNSPECIFIED = 0;
+      DEBIT = 1;
+      CREDIT = 2;
+    }
+    string book_account = 1;
+    Side side = 2;
+    string amount = 3;      // positive decimal, 2 fraction digits
+  }
+
+  string posting_id = 1;
+  google.protobuf.Timestamp booked_at = 2;
+  string value_date = 3;    // ISO date (Europe/Berlin)
+  string portfolio_id = 4;
+  Type type = 5;
+  string reference = 6;     // transfer id, or "fill:<order id>:<exec id>"
+  string currency = 7;      // "EUR"
+  repeated Line lines = 8;
+}

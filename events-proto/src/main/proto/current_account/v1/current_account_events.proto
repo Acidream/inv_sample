@@ -21,6 +21,8 @@ message CurrentAccountEvent {
     DebitRejected debit_rejected = 12;
     CurrentAccountCredited current_account_credited = 13;
     CreditRejected credit_rejected = 14;
+    CurrentAccountBlocked current_account_blocked = 15;
+    CurrentAccountUnblocked current_account_unblocked = 16;
   }
 }
 
@@ -46,4 +48,13 @@ message CurrentAccountCredited {
 message CreditRejected {
   string transfer_id = 1;
   string reason = 2;
+}
+
+// The account refuses transfers both ways from now on.
+message CurrentAccountBlocked {
+  string reason = 1;
+}
+
+// Transfers are possible again, e.g. a payout that was refused while the account was blocked (ADR 0026).
+message CurrentAccountUnblocked {
 }

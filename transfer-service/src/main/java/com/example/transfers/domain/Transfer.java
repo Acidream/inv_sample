@@ -8,22 +8,54 @@ import java.util.UUID;
 
 /**
  * A transfer between two accounts of the same customer, as a saga across their ledgers (ADR 0015,
- * 0018). The source is always debited first; if the target then refuses the credit, the debit is
- * compensated. Every method returns the {@link Step} to carry out next.
+ * 0018, 0028). One side is always the current account, the other a product ledger (savings or
+ * investments). The source is always debited first; if the target then refuses the credit, the debit
+ * is compensated. Every method returns the {@link Step} to carry out next.
  *
  * <pre>
  * AWAITING_ACCOUNTS --&gt; DEBITING --&gt; CREDITING --&gt; COMPLETED
  *        |               |             |
  *        v               v             v
- *      FAILED          FAILED       RETURNING --&gt; FAILED      (only savings to current account)
+ *      FAILED          FAILED       RETURNING --&gt; FAILED      (only to the current account)
  * </pre>
  *
- * <p>A credit to savings is never refused: savings accounts are opened before money is sent to them
- * (ADR 0020), so only the current account can refuse a credit.
+ * <p>A credit to a product ledger is never refused: savings accounts and portfolios are opened before
+ * money is sent to them (ADR 0020, 0026), so only the current account can refuse a credit.
  */
 public final class Transfer {
 
-    public enum Route { CURRENT_TO_SAVINGS, SAVINGS_TO_CURRENT }
+    /** Which way the money goes. Every route has the current account on one side. */
+    public enum Route {
+        CURRENT_TO_SAVINGS(Ledger.CURRENT_ACCOUNT, Ledger.SAVINGS),
+        SAVINGS_TO_CURRENT(Ledger.SAVINGS, Ledger.CURRENT_ACCOUNT),
+        CURRENT_TO_INVESTMENTS(Ledger.CURRENT_ACCOUNT, Ledger.INVESTMENTS),
+        INVESTMENTS_TO_CURRENT(Ledger.INVESTMENTS, Ledger.CURRENT_ACCOUNT);
+
+        private final Ledger source;
+        private final Ledger target;
+
+        Route(Ledger source, Ledger target) {
+            this.source = source;
+            this.target = target;
+        }
+
+        public Ledger source() {
+            return source;
+        }
+
+        public Ledger target() {
+            return target;
+        }
+
+        static Optional<Route> between(Ledger source, Ledger target) {
+            for (var route : values()) {
+                if (route.source == source && route.target == target) {
+                    return Optional.of(route);
+                }
+            }
+            return Optional.empty();
+        }
+    }
 
     public enum Status { AWAITING_ACCOUNTS, DEBITING, CREDITING, RETURNING, COMPLETED, FAILED }
 
@@ -105,18 +137,17 @@ public final class Transfer {
         }
         var fromLedger = from.get().ledger();
         var toLedger = to.get().ledger();
-        if (fromLedger == Ledger.CURRENT_ACCOUNT && toLedger == Ledger.SAVINGS) {
-            route = Route.CURRENT_TO_SAVINGS;
-            status = Status.DEBITING;
-            return new Step.DebitCurrentAccount(request.fromAccountId(), request.transferId(), request.amount());
+        var supported = Route.between(fromLedger, toLedger);
+        if (supported.isEmpty()) {
+            return fail(FailureReason.INVALID_REQUEST, "transfers from " + fromLedger + " to " + toLedger
+                    + " are not supported");
         }
-        if (fromLedger == Ledger.SAVINGS && toLedger == Ledger.CURRENT_ACCOUNT) {
-            route = Route.SAVINGS_TO_CURRENT;
-            status = Status.DEBITING;
-            return new Step.DebitSavings(request.fromAccountId(), request.transferId(), request.amount());
-        }
-        return fail(FailureReason.INVALID_REQUEST, "transfers from " + fromLedger + " to " + toLedger
-                + " are not supported");
+        route = supported.get();
+        status = Status.DEBITING;
+        return route.source() == Ledger.CURRENT_ACCOUNT
+                ? new Step.DebitCurrentAccount(request.fromAccountId(), request.transferId(), request.amount())
+                : new Step.DebitProductLedger(route.source(), request.fromAccountId(), request.transferId(),
+                        request.amount());
     }
 
     /** A request whose accounts never became known. */
@@ -130,9 +161,10 @@ public final class Transfer {
         require(Status.DEBITING, "be debited");
         requireAnswerer(by, account, sourceLedger(), request.fromAccountId(), "debited");
         status = Status.CREDITING;
-        return route == Route.CURRENT_TO_SAVINGS
-                ? new Step.CreditSavings(request.toAccountId(), request.transferId(), request.amount())
-                : new Step.CreditCurrentAccount(request.toAccountId(), request.transferId(), request.amount());
+        return route.target() == Ledger.CURRENT_ACCOUNT
+                ? new Step.CreditCurrentAccount(request.toAccountId(), request.transferId(), request.amount())
+                : new Step.CreditProductLedger(route.target(), request.toAccountId(), request.transferId(),
+                        request.amount());
     }
 
     public Step debitRejected(Ledger by, UUID account, String detail) {
@@ -152,19 +184,19 @@ public final class Transfer {
     public Step creditRefused(Ledger by, UUID account, String detail) {
         require(Status.CREDITING, "have its credit refused");
         requireAnswerer(by, account, targetLedger(), request.toAccountId(), "refused the credit of");
-        if (route != Route.SAVINGS_TO_CURRENT) {
-            throw new IllegalTransferStateException("Savings never refuses a credit; transfer "
+        if (route.target() != Ledger.CURRENT_ACCOUNT) {
+            throw new IllegalTransferStateException(route.target() + " never refuses a credit; transfer "
                     + request.transferId());
         }
         status = Status.RETURNING;
         failureDetail = detail;
-        return new Step.ReturnToSavings(request.fromAccountId(), request.transferId());
+        return new Step.ReturnToProductLedger(route.source(), request.fromAccountId(), request.transferId());
     }
 
-    /** Savings credited the refused money back: the transfer failed, and no money moved. */
+    /** The product ledger credited the refused money back: the transfer failed, and no money moved. */
     public Step returned(Ledger by, UUID account) {
         require(Status.RETURNING, "be returned");
-        requireAnswerer(by, account, Ledger.SAVINGS, request.fromAccountId(), "returned");
+        requireAnswerer(by, account, sourceLedger(), request.fromAccountId(), "returned");
         return fail(FailureReason.CREDIT_REFUSED, failureDetail);
     }
 
@@ -176,11 +208,11 @@ public final class Transfer {
     }
 
     private Ledger sourceLedger() {
-        return route == Route.CURRENT_TO_SAVINGS ? Ledger.CURRENT_ACCOUNT : Ledger.SAVINGS;
+        return route.source();
     }
 
     private Ledger targetLedger() {
-        return route == Route.CURRENT_TO_SAVINGS ? Ledger.SAVINGS : Ledger.CURRENT_ACCOUNT;
+        return route.target();
     }
 
     private void require(Status expected, String action) {

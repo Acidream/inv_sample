@@ -16,6 +16,7 @@ class TransferTest {
 
     private final KnownAccount current = new KnownAccount(UUID.randomUUID(), CUSTOMER, Ledger.CURRENT_ACCOUNT);
     private final KnownAccount savings = new KnownAccount(UUID.randomUUID(), CUSTOMER, Ledger.SAVINGS);
+    private final KnownAccount portfolio = new KnownAccount(UUID.randomUUID(), CUSTOMER, Ledger.INVESTMENTS);
 
     private Transfer transfer(KnownAccount from, KnownAccount to) {
         return Transfer.requested(new Transfer.Request("t1", CUSTOMER, from.accountId(), to.accountId(), AMOUNT,
@@ -29,7 +30,7 @@ class TransferTest {
         assertThat(transfer.start(Optional.of(current), Optional.of(savings)))
                 .isEqualTo(new Step.DebitCurrentAccount(current.accountId(), "t1", AMOUNT));
         assertThat(transfer.debited(Ledger.CURRENT_ACCOUNT, current.accountId()))
-                .isEqualTo(new Step.CreditSavings(savings.accountId(), "t1", AMOUNT));
+                .isEqualTo(new Step.CreditProductLedger(Ledger.SAVINGS, savings.accountId(), "t1", AMOUNT));
         assertThat(transfer.credited(Ledger.SAVINGS, savings.accountId())).isEqualTo(new Step.Completed("t1"));
         assertThat(transfer.status()).isEqualTo(Transfer.Status.COMPLETED);
         assertThat(transfer.route()).contains(Transfer.Route.CURRENT_TO_SAVINGS);
@@ -40,7 +41,7 @@ class TransferTest {
         var transfer = transfer(savings, current);
 
         assertThat(transfer.start(Optional.of(savings), Optional.of(current)))
-                .isEqualTo(new Step.DebitSavings(savings.accountId(), "t1", AMOUNT));
+                .isEqualTo(new Step.DebitProductLedger(Ledger.SAVINGS, savings.accountId(), "t1", AMOUNT));
         assertThat(transfer.debited(Ledger.SAVINGS, savings.accountId()))
                 .isEqualTo(new Step.CreditCurrentAccount(current.accountId(), "t1", AMOUNT));
         assertThat(transfer.credited(Ledger.CURRENT_ACCOUNT, current.accountId())).isEqualTo(new Step.Completed("t1"));
@@ -53,10 +54,46 @@ class TransferTest {
         transfer.debited(Ledger.SAVINGS, savings.accountId());
 
         assertThat(transfer.creditRefused(Ledger.CURRENT_ACCOUNT, current.accountId(), "account closed"))
-                .isEqualTo(new Step.ReturnToSavings(savings.accountId(), "t1"));
+                .isEqualTo(new Step.ReturnToProductLedger(Ledger.SAVINGS, savings.accountId(), "t1"));
         assertThat(transfer.status()).isEqualTo(Transfer.Status.RETURNING);
         assertThat(transfer.returned(Ledger.SAVINGS, savings.accountId()))
                 .isEqualTo(new Step.Failed("t1", Transfer.FailureReason.CREDIT_REFUSED, "account closed"));
+    }
+
+    @Test
+    void start_CurrentToPortfolio_DebitsCurrentAccountThenCreditsInvestments() {
+        var transfer = transfer(current, portfolio);
+
+        assertThat(transfer.start(Optional.of(current), Optional.of(portfolio)))
+                .isEqualTo(new Step.DebitCurrentAccount(current.accountId(), "t1", AMOUNT));
+        assertThat(transfer.debited(Ledger.CURRENT_ACCOUNT, current.accountId()))
+                .isEqualTo(new Step.CreditProductLedger(Ledger.INVESTMENTS, portfolio.accountId(), "t1", AMOUNT));
+        assertThat(transfer.credited(Ledger.INVESTMENTS, portfolio.accountId())).isEqualTo(new Step.Completed("t1"));
+        assertThat(transfer.route()).contains(Transfer.Route.CURRENT_TO_INVESTMENTS);
+    }
+
+    @Test
+    void creditRefused_PortfolioToCurrent_ReturnsMoneyToInvestments() {
+        var transfer = transfer(portfolio, current);
+        assertThat(transfer.start(Optional.of(portfolio), Optional.of(current)))
+                .isEqualTo(new Step.DebitProductLedger(Ledger.INVESTMENTS, portfolio.accountId(), "t1", AMOUNT));
+        transfer.debited(Ledger.INVESTMENTS, portfolio.accountId());
+
+        assertThat(transfer.creditRefused(Ledger.CURRENT_ACCOUNT, current.accountId(), "account blocked"))
+                .isEqualTo(new Step.ReturnToProductLedger(Ledger.INVESTMENTS, portfolio.accountId(), "t1"));
+        assertThatThrownBy(() -> transfer.returned(Ledger.SAVINGS, portfolio.accountId()))
+                .isInstanceOf(IllegalTransferStateException.class);
+        assertThat(transfer.returned(Ledger.INVESTMENTS, portfolio.accountId()))
+                .isEqualTo(new Step.Failed("t1", Transfer.FailureReason.CREDIT_REFUSED, "account blocked"));
+    }
+
+    @Test
+    void start_SavingsToPortfolio_FailsAsInvalidRequest() {
+        var transfer = transfer(savings, portfolio);
+
+        assertThat(transfer.start(Optional.of(savings), Optional.of(portfolio)))
+                .isEqualTo(new Step.Failed("t1", Transfer.FailureReason.INVALID_REQUEST,
+                        "transfers from SAVINGS to INVESTMENTS are not supported"));
     }
 
     @Test

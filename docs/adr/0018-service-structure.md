@@ -1,6 +1,6 @@
 # 0018 – Service structure: savings, transfers, current account
 
-Date: 2026-11-23 · Status: Accepted · Supersedes [0002](0002-one-service-and-a-contract-library.md) · Current account built in [0021](0021-current-account-service.md) · Technical library: [0022](0022-shared-technical-library.md)
+Date: 2026-11-23 · Status: Accepted · Supersedes [0002](0002-one-service-and-a-contract-library.md) · Current account built in [0021](0021-current-account-service.md) · Technical library: [0022](0022-shared-technical-library.md) · Investments and a broker gateway added in [0026](0026-investment-service.md), [0027](0027-fix-gateway.md), [0028](0028-investments-as-a-third-ledger.md)
 
 ## Context
 

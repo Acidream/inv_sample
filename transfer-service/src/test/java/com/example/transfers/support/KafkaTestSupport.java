@@ -37,8 +37,11 @@ public class KafkaTestSupport implements DisposableBean {
     public static final String CURRENT_ACCOUNT_INSTRUCTIONS = "payments.current-account-instructions.v1";
     public static final String SAVINGS_EVENTS = "savings.account-events.v1";
     public static final String CURRENT_ACCOUNT_EVENTS = "current-account.events.v1";
+    public static final String INVESTMENT_INSTRUCTIONS = "payments.investment-instructions.v1";
+    public static final String INVESTMENT_EVENTS = "investments.account-events.v1";
     private static final List<String> OBSERVED = List.of(TRANSFER_EVENTS, SAVINGS_INSTRUCTIONS,
-            CURRENT_ACCOUNT_INSTRUCTIONS, TRANSFER_REQUESTS + ".DLT", SAVINGS_EVENTS + ".DLT",
+            CURRENT_ACCOUNT_INSTRUCTIONS, INVESTMENT_INSTRUCTIONS, TRANSFER_REQUESTS + ".DLT", SAVINGS_EVENTS + ".DLT",
+            INVESTMENT_EVENTS + ".DLT",
             CURRENT_ACCOUNT_EVENTS + ".DLT");
     private static final Duration TIMEOUT = Duration.ofSeconds(20);
 

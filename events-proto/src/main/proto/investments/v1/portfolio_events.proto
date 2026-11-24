@@ -1,0 +1,64 @@
+syntax = "proto3";
+
+package investments.v1;
+
+import "common.proto";
+import "google/protobuf/timestamp.proto";
+
+option java_multiple_files = true;
+option java_package = "com.example.events.investments.v1";
+
+// Topic: investments.account-events.v1 (owned by the Investments team).
+// Key:   portfolio_id. Events of one portfolio are published in order.
+// Delivery is at-least-once: consumers must de-duplicate on event_id.
+//
+// The transfer service learns portfolios from PortfolioOpened and sends them the same instructions it
+// sends savings (payments.v1.PaymentInstruction on payments.investment-instructions.v1, ADR 0028).
+// Every instruction gets exactly one answer, carrying its transfer_id:
+//   TransferFromCurrentAccount -> MoneyDeposited
+//   TransferToCurrentAccount   -> MoneyWithdrawn | WithdrawalRejected
+//   TransferReturned           -> WithdrawalReturned
+message PortfolioEvent {
+  string event_id = 1;
+  google.protobuf.Timestamp occurred_at = 2;
+  string portfolio_id = 3;
+
+  oneof payload {
+    PortfolioOpened portfolio_opened = 10;
+    MoneyDeposited money_deposited = 11;
+    MoneyWithdrawn money_withdrawn = 12;
+    WithdrawalRejected withdrawal_rejected = 13;
+    WithdrawalReturned withdrawal_returned = 14;
+  }
+}
+
+message PortfolioOpened {
+  string customer_id = 1;
+  string reference_account_id = 2;  // the current account refunds and proceeds are paid to
+}
+
+// Money for a buy order arrived from the current account.
+message MoneyDeposited {
+  string transfer_id = 1;
+  common.v1.Money amount = 2;
+}
+
+// Money left the portfolio for the current account: a refund, proceeds, or an unpaid payout retried.
+message MoneyWithdrawn {
+  string transfer_id = 1;
+  common.v1.Money amount = 2;
+}
+
+// Nothing is owed under this transfer id. Investments only requests transfers it can pay, so this
+// answers instructions it didn't ask for.
+message WithdrawalRejected {
+  string transfer_id = 1;
+  common.v1.Money amount = 2;
+  string reason = 3;               // free text for people
+}
+
+// The current account refused the money; it is back on the portfolio as an unpaid payout.
+message WithdrawalReturned {
+  string transfer_id = 1;
+  common.v1.Money amount = 2;
+}

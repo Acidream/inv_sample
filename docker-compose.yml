@@ -2,6 +2,8 @@
 #   Savings    http://localhost:8080/swagger-ui.html
 #   Transfers  http://localhost:8081/swagger-ui.html
 #   Current accounts http://localhost:8082/swagger-ui.html
+#   Investments http://localhost:8083/swagger-ui.html
+#   FIX gateway http://localhost:8084/actuator/health (no API; talks FIX to execution-simulator)
 #   Prometheus http://localhost:9090   (alerts: /alerts)
 #   Grafana    http://localhost:3000   (anonymous viewer, dashboard "Savings")
 services:
@@ -37,6 +39,29 @@ services:
       POSTGRES_PASSWORD: current_accounts
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U current_accounts"]
+      interval: 2s
+      retries: 30
+
+  investments-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: investments
+      POSTGRES_USER: investments
+      POSTGRES_PASSWORD: investments
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U investments"]
+      interval: 2s
+      retries: 30
+
+  # The gateway's orders, executions and FIX session state (ADR 0027).
+  gateway-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: gateway
+      POSTGRES_USER: gateway
+      POSTGRES_PASSWORD: gateway
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gateway"]
       interval: 2s
       retries: 30
 
@@ -90,6 +115,33 @@ services:
     depends_on:
       current-accounts-db: { condition: service_healthy }
       kafka: { condition: service_healthy }
+
+  investment-service:
+    build: ./investment-service
+    ports: ["8083:8083"]
+    environment:
+      DB_URL: jdbc:postgresql://investments-db:5432/investments
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    depends_on:
+      investments-db: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+
+  fix-gateway:
+    build: ./fix-gateway
+    ports: ["8084:8084"]
+    environment:
+      DB_URL: jdbc:postgresql://gateway-db:5432/gateway
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      FIX_HOST: execution-simulator
+      FIX_PORT: "9878"
+    depends_on:
+      gateway-db: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+      execution-simulator: { condition: service_started }
+
+  # Plays the broker: fills every market order at once at a fixed price per ISIN.
+  execution-simulator:
+    build: ./execution-simulator
 
   prometheus:
     image: prom/prometheus:v3.1.0

@@ -1,6 +1,6 @@
 # 0001 – Scope: savings accounts only
 
-Date: 2026-11-22 · Status: Accepted
+Date: 2026-11-22 · Status: Accepted · Investments built in [0026](0026-investment-service.md)
 
 ## Context
 

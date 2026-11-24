@@ -14,8 +14,10 @@
 <import-control pkg="com.example" strategyOnMismatch="allowed">
 
     <subpackage name="savings">
+        <disallow pkg="com.example.fixgateway"/>
         <disallow pkg="com.example.transfers"/>
         <disallow pkg="com.example.currentaccount"/>
+        <disallow pkg="com.example.investments"/>
         <disallow pkg="jakarta.persistence"/>
         <disallow pkg="org.hibernate"/>
         <disallow pkg="org.springframework.data"/>
@@ -52,8 +54,10 @@
     </subpackage>
 
     <subpackage name="transfers">
+        <disallow pkg="com.example.fixgateway"/>
         <disallow pkg="com.example.savings"/>
         <disallow pkg="com.example.currentaccount"/>
+        <disallow pkg="com.example.investments"/>
 
         <subpackage name="domain" strategyOnMismatch="disallowed">
             <allow pkg="java"/>
@@ -80,12 +84,16 @@
         <disallow pkg="com.example.savings"/>
         <disallow pkg="com.example.transfers"/>
         <disallow pkg="com.example.currentaccount"/>
+        <disallow pkg="com.example.investments"/>
+        <disallow pkg="com.example.fixgateway"/>
         <disallow pkg="com.example.events"/>
     </subpackage>
 
     <subpackage name="currentaccount">
+        <disallow pkg="com.example.fixgateway"/>
         <disallow pkg="com.example.savings"/>
         <disallow pkg="com.example.transfers"/>
+        <disallow pkg="com.example.investments"/>
 
         <subpackage name="domain" strategyOnMismatch="disallowed">
             <allow pkg="java"/>
@@ -104,6 +112,73 @@
             <allow pkg="org.junit"/>
             <allow pkg="org.assertj"/>
             <allow pkg="org.mockito"/>
+        </subpackage>
+    </subpackage>
+
+    <subpackage name="investments">
+        <disallow pkg="com.example.fixgateway"/>
+        <disallow pkg="com.example.savings"/>
+        <disallow pkg="com.example.transfers"/>
+        <disallow pkg="com.example.currentaccount"/>
+
+        <subpackage name="domain" strategyOnMismatch="disallowed">
+            <allow pkg="java"/>
+            <allow pkg="com.example.investments.domain"/>
+            <allow pkg="org.junit"/>
+            <allow pkg="org.assertj"/>
+        </subpackage>
+
+        <subpackage name="application" strategyOnMismatch="disallowed">
+            <allow pkg="java"/>
+            <allow pkg="com.example.investments.domain"/>
+            <allow pkg="com.example.investments.application"/>
+            <allow class="org.springframework.stereotype.Service"/>
+            <allow class="org.springframework.stereotype.Component"/>
+            <allow class="org.springframework.transaction.annotation.Transactional"/>
+            <allow pkg="org.slf4j"/>
+            <allow pkg="org.junit"/>
+            <allow pkg="org.assertj"/>
+            <allow pkg="org.mockito"/>
+        </subpackage>
+    </subpackage>
+
+    <!-- The FIX gateway (ADR 0027): QuickFIX/J stays in adapter.fix. -->
+    <subpackage name="fixgateway">
+        <disallow pkg="com.example.savings"/>
+        <disallow pkg="com.example.transfers"/>
+        <disallow pkg="com.example.currentaccount"/>
+        <disallow pkg="com.example.investments"/>
+        <disallow pkg="quickfix"/>
+
+        <subpackage name="domain" strategyOnMismatch="disallowed">
+            <allow pkg="java"/>
+            <allow pkg="com.example.fixgateway.domain"/>
+            <allow pkg="org.junit"/>
+            <allow pkg="org.assertj"/>
+        </subpackage>
+
+        <subpackage name="application" strategyOnMismatch="disallowed">
+            <allow pkg="java"/>
+            <allow pkg="com.example.fixgateway.domain"/>
+            <allow pkg="com.example.fixgateway.application"/>
+            <allow class="org.springframework.stereotype.Service"/>
+            <allow class="org.springframework.stereotype.Component"/>
+            <allow class="org.springframework.transaction.annotation.Transactional"/>
+            <allow pkg="org.slf4j"/>
+            <allow pkg="org.junit"/>
+            <allow pkg="org.assertj"/>
+            <allow pkg="org.mockito"/>
+        </subpackage>
+
+        <subpackage name="adapter">
+            <subpackage name="fix">
+                <allow pkg="quickfix"/>
+            </subpackage>
+        </subpackage>
+
+        <!-- Tests: the broker is a FIX acceptor. -->
+        <subpackage name="support">
+            <allow pkg="quickfix"/>
         </subpackage>
     </subpackage>
 

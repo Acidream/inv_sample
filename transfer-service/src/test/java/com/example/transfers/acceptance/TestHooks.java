@@ -2,6 +2,8 @@ package com.example.transfers.acceptance;
 
 import static com.example.transfers.support.KafkaTestSupport.CURRENT_ACCOUNT_EVENTS;
 import static com.example.transfers.support.KafkaTestSupport.CURRENT_ACCOUNT_INSTRUCTIONS;
+import static com.example.transfers.support.KafkaTestSupport.INVESTMENT_EVENTS;
+import static com.example.transfers.support.KafkaTestSupport.INVESTMENT_INSTRUCTIONS;
 import static com.example.transfers.support.KafkaTestSupport.SAVINGS_EVENTS;
 import static com.example.transfers.support.KafkaTestSupport.SAVINGS_INSTRUCTIONS;
 import static com.example.transfers.support.KafkaTestSupport.TRANSFER_EVENTS;
@@ -14,6 +16,8 @@ import com.example.events.currentaccount.v1.CurrentAccountDebited;
 import com.example.events.currentaccount.v1.CurrentAccountEvent;
 import com.example.events.currentaccount.v1.CurrentAccountOpened;
 import com.example.events.currentaccount.v1.DebitRejected;
+import com.example.events.investments.v1.PortfolioEvent;
+import com.example.events.investments.v1.PortfolioOpened;
 import com.example.events.payments.v1.CurrentAccountInstruction;
 import com.example.events.payments.v1.PaymentInstruction;
 import com.example.events.payments.v1.TransferEvent;
@@ -39,8 +43,8 @@ import org.springframework.context.ApplicationContext;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * The bridge Karate features call through {@code Java.type}: plays the savings and current account
- * ledgers and the requesters, and observes what the transfer service sends.
+ * The bridge Karate features call through {@code Java.type}: plays the savings, current account and
+ * investments ledgers and the requesters, and observes what the transfer service sends.
  */
 public final class TestHooks {
 
@@ -187,6 +191,42 @@ public final class TestHooks {
                 .setTransferId(transferId).setAmount(eur(amount)).setBalance(eur(amount))));
     }
 
+    // --- the investments ledger -------------------------------------------------------------------
+
+    /** @return the new portfolio's id */
+    public static String portfolioOpened(String customerId) {
+        var portfolioId = uuid();
+        investments(portfolioId, PortfolioEvent.newBuilder().setPortfolioOpened(
+                PortfolioOpened.newBuilder().setCustomerId(customerId).setReferenceAccountId(uuid())));
+        return portfolioId;
+    }
+
+    /** Waits for an instruction to a portfolio; the types are the same as savings'. */
+    public static Map<String, Object> awaitInvestmentInstruction(String portfolioId, String type) {
+        var instruction = kafka().await(INVESTMENT_INSTRUCTIONS, PaymentInstruction.parser(),
+                i -> i.getAccountId().equals(portfolioId) && i.getPayloadCase().name().equals(type),
+                type + " for portfolio " + portfolioId);
+        return payload(instruction, instruction.getPayloadCase().getNumber());
+    }
+
+    public static void investmentsDeposited(String portfolioId, String transferId, String amount) {
+        investments(portfolioId, PortfolioEvent.newBuilder().setMoneyDeposited(
+                com.example.events.investments.v1.MoneyDeposited.newBuilder()
+                        .setTransferId(transferId).setAmount(eur(amount))));
+    }
+
+    public static void investmentsWithdrawn(String portfolioId, String transferId, String amount) {
+        investments(portfolioId, PortfolioEvent.newBuilder().setMoneyWithdrawn(
+                com.example.events.investments.v1.MoneyWithdrawn.newBuilder()
+                        .setTransferId(transferId).setAmount(eur(amount))));
+    }
+
+    public static void investmentsWithdrawalReturned(String portfolioId, String transferId, String amount) {
+        investments(portfolioId, PortfolioEvent.newBuilder().setWithdrawalReturned(
+                com.example.events.investments.v1.WithdrawalReturned.newBuilder()
+                        .setTransferId(transferId).setAmount(eur(amount))));
+    }
+
     // --- observing the outcome --------------------------------------------------------------------
 
     /** Waits for the transfer's outcome; the map has {@code type} (TRANSFER_COMPLETED or TRANSFER_FAILED). */
@@ -214,6 +254,11 @@ public final class TestHooks {
     private static void savings(String accountId, AccountEvent.Builder event) {
         var built = event.setEventId(uuid()).setOccurredAt(now()).setAccountId(accountId).build();
         kafka().send(SAVINGS_EVENTS, accountId, built.toByteArray());
+    }
+
+    private static void investments(String portfolioId, PortfolioEvent.Builder event) {
+        var built = event.setEventId(uuid()).setOccurredAt(now()).setPortfolioId(portfolioId).build();
+        kafka().send(INVESTMENT_EVENTS, portfolioId, built.toByteArray());
     }
 
     /** The oneof payload of an envelope as a JSON-like map. */

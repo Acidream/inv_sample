@@ -46,6 +46,8 @@ transfers:
     current-account-instructions: payments.current-account-instructions.v1
     savings-events: savings.account-events.v1
     current-account-events: current-account.events.v1
+    investment-instructions: payments.investment-instructions.v1
+    investment-events: investments.account-events.v1
     partitions: 3
   # A request whose accounts are still unknown after this long fails as INVALID_REQUEST.
   awaiting-accounts-timeout: 10m

@@ -7,6 +7,7 @@ springdoc = "3.2.1"
 karate = "2.1.4"
 archunit = "1.5.1"
 checkstyle = "14.4.0"
+quickfixj = "2.3.3"
 
 [libraries]
 protobuf-java = { module = "com.google.protobuf:protobuf-java", version.ref = "protobuf" }
@@ -16,6 +17,8 @@ shedlock-spring = { module = "net.javacrumbs.shedlock:shedlock-spring", version.
 shedlock-jdbc = { module = "net.javacrumbs.shedlock:shedlock-provider-jdbc-template", version.ref = "shedlock" }
 springdoc-webmvc = { module = "org.springdoc:springdoc-openapi-starter-webmvc-ui", version.ref = "springdoc" }
 karate-junit6 = { module = "io.karatelabs:karate-junit6", version.ref = "karate" }
+quickfixj-core = { module = "org.quickfixj:quickfixj-core", version.ref = "quickfixj" }
+quickfixj-fix44 = { module = "org.quickfixj:quickfixj-messages-fix44", version.ref = "quickfixj" }
 archunit = { module = "com.tngtech.archunit:archunit", version.ref = "archunit" }
 
 [plugins]

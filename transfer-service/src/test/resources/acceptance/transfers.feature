@@ -1,4 +1,4 @@
-Feature: Transfers between a customer's current account and savings (ADR 0015, 0018)
+Feature: Transfers between a customer's current account and savings or investments (ADR 0015, 0018, 0028)
 
   Background:
     * hooks.resetClock()
@@ -81,6 +81,42 @@ Feature: Transfers between a customer's current account and savings (ADR 0015, 0
     * def outcome = hooks.awaitTransferEvent(transferId)
     * match outcome == { reason: 'CREDIT_REFUSED', detail: 'account closed', type: 'TRANSFER_FAILED' }
 
+  Scenario: money for a buy order: the current account is debited, then the portfolio credited
+    * def portfolio = hooks.portfolioOpened(customerId)
+    * hooks.requestTransfer(transferId, customerId, currentAccount, portfolio, '500.00')
+    * def debit = hooks.awaitCurrentAccountInstruction(currentAccount, 'DEBIT_CURRENT_ACCOUNT')
+    * hooks.currentAccountDebited(currentAccount, transferId, '500.00')
+
+    * def credit = hooks.awaitInvestmentInstruction(portfolio, 'TRANSFER_FROM_CURRENT_ACCOUNT')
+    * match credit == { transferId: '#(transferId)', amount: { amount: '500.00', currency: 'EUR' } }
+    * hooks.investmentsDeposited(portfolio, transferId, '500.00')
+
+    * def outcome = hooks.awaitTransferEvent(transferId)
+    * match outcome.type == 'TRANSFER_COMPLETED'
+    Given path 'transfers', transferId
+    When method get
+    Then match response contains { status: 'COMPLETED', route: 'CURRENT_TO_INVESTMENTS' }
+
+  Scenario: a refund the current account refuses goes back to the portfolio
+    * def portfolio = hooks.portfolioOpened(customerId)
+    * hooks.requestTransfer(transferId, customerId, portfolio, currentAccount, '12.34')
+    * def debit = hooks.awaitInvestmentInstruction(portfolio, 'TRANSFER_TO_CURRENT_ACCOUNT')
+    * hooks.investmentsWithdrawn(portfolio, transferId, '12.34')
+    * def credit = hooks.awaitCurrentAccountInstruction(currentAccount, 'CREDIT_CURRENT_ACCOUNT')
+    * hooks.currentAccountCreditRejected(currentAccount, transferId, 'account blocked')
+
+    * def returned = hooks.awaitInvestmentInstruction(portfolio, 'TRANSFER_RETURNED')
+    * match returned == { transferId: '#(transferId)' }
+    * hooks.investmentsWithdrawalReturned(portfolio, transferId, '12.34')
+    * def outcome = hooks.awaitTransferEvent(transferId)
+    * match outcome == { reason: 'CREDIT_REFUSED', detail: 'account blocked', type: 'TRANSFER_FAILED' }
+
+  Scenario: money doesn't move between savings and a portfolio directly
+    * def portfolio = hooks.portfolioOpened(customerId)
+    * hooks.requestTransfer(transferId, customerId, savingsAccount, portfolio, '10.00')
+    * def outcome = hooks.awaitTransferEvent(transferId)
+    * match outcome == { reason: 'INVALID_REQUEST', detail: 'transfers from SAVINGS to INVESTMENTS are not supported', type: 'TRANSFER_FAILED' }
+
   Scenario: a request for an account that was just opened waits until the account is known
     * def newSavings = hooks.uuid()
     * hooks.requestTransfer(transferId, customerId, currentAccount, newSavings, '10.00')
@@ -158,7 +194,7 @@ Feature: Transfers between a customer's current account and savings (ADR 0015, 0
     * match outcome.reason == 'INVALID_REQUEST'
     * match outcome.detail contains 'does not belong to customer'
 
-  Scenario: only transfers between a current account and savings are supported
+  Scenario: only transfers with a current account on one side are supported
     * def otherSavings = hooks.savingsAccountOpened(customerId)
     * hooks.requestTransfer(transferId, customerId, savingsAccount, otherSavings, '10.00')
     * def outcome = hooks.awaitTransferEvent(transferId)

@@ -10,6 +10,8 @@ option java_package = "com.example.events.payments.v1";
 
 // Topic: payments.savings-instructions.v1 (owned by the Payments team, which orchestrates transfers
 //        between a customer's current account and savings account).
+//        The same message goes to investments on payments.investment-instructions.v1, where
+//        account_id is the portfolio id (ADR 0028).
 // Key:   account_id. Producers MUST key by account so that all instructions
 //        for one account land on one partition and are consumed in order.
 //

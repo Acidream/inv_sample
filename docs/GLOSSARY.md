@@ -12,7 +12,7 @@ Terms as they are used in code, events and docs. If code and glossary disagree, 
 | **Ledger** | Append-only list of bookings per account. Never updated or deleted; corrections are new entries. | `domain.LedgerEntry`, `ledger_entry` |
 | **Ledger entry** | One booking: entry number, type (DEPOSIT, WITHDRAWAL, WITHDRAWAL_RETURN, INTEREST), signed amount, balance after, business reference, booking time. | `LedgerEntry` |
 | **Entry number** | Numbers an account's ledger entries 1, 2, 3, ... in booking order. With the booking time, which never goes backwards on one account, it defines the order of the ledger. | `LedgerEntry.entryNo` |
-| **Current account** | The customer's main account at the bank, owned by the Current Account team. The only place savings money comes from or goes to. Its balance may go below zero down to the overdraft limit. | `current-account-service`, `domain.CurrentAccount` |
+| **Current account** | The customer's main account at the bank, owned by the Current Account team. The only place savings and portfolio money comes from or goes to. Its balance may go below zero down to the overdraft limit. | `current-account-service`, `domain.CurrentAccount` |
 | **Overdraft limit** | How far a current account's balance may go below zero. A debit that would go further is rejected ("overdraft limit exceeded"). Set when the account is opened. | `CurrentAccount.overdraftLimit()` |
 | **Available** | What a current account can still spend: balance plus the unused overdraft; zero while blocked. | `CurrentAccount.available()` |
 | **Blocked** | A current account that refuses transfers both ways ("account blocked"); incoming payments are still booked. | `CurrentAccount.Status.BLOCKED` |
@@ -21,8 +21,30 @@ Terms as they are used in code, events and docs. If code and glossary disagree, 
 | **Payments** | The team that orchestrates transfers between current account and savings, and makes external payments from the current account. Owns the transfer service. | `transfer-service`, `payments.v1` |
 | **Transfer service** | Moves money between two accounts of the same customer as a saga across their ledgers. Knows accounts, not products. | `transfer-service`, `Transfer` |
 | **Transfer request** | Asks the transfer service to move an amount from one account to another, under a transfer id the requester chose. | `payments.v1.TransferRequest` |
-| **Account directory** | The transfer service's list of known accounts (owner, ledger), built from `AccountOpened` and `CurrentAccountOpened` events. | `known_account`, `AccountDirectory` |
+| **Account directory** | The transfer service's list of known accounts (owner, ledger), built from `AccountOpened`, `CurrentAccountOpened` and `PortfolioOpened` events. | `known_account`, `AccountDirectory` |
 | **Order** | A customer's request to open a savings account on a product version and fund it from their current account. `REJECTED`, `FUNDING`, `FUNDED` or `FUNDING_FAILED`. | `domain.order.Order`, `savings_order` |
+| **Product ledger** | A ledger other than the current account's: savings or investments. Both take the same instructions from the transfer service, each on its own topic. | `KnownAccount.Ledger`, `Step.DebitProductLedger` |
+| **Portfolio** | A customer's investments: holdings, and a money ledger that is empty at rest. Opened with a reference account, the current account that refunds and proceeds go to. A third ledger to the transfer service. | `investments.domain.Portfolio`, `portfolio` |
+| **Instrument** | An ETF or stock a customer can buy, identified by its ISIN, traded in EUR. Can be taken off sale from a time: then sold, not bought. | `Instrument`, `instrument`, `GET /instruments` |
+| **ISIN** | The 12-character international securities identification number, e.g. `IE00B4L5Y983`; how instruments are named everywhere, including on FIX (`SecurityIDSource=4`). | `Instrument.ISIN` |
+| **Investment order** | A market order for one instrument: a buy names an amount of money, a sell a number of units. Its trading status (`FUNDING`, `PLACED`, `PARTIALLY_FILLED`, `FILLED`, `EXPIRED`, `REJECTED`, `FUNDING_FAILED`) and its settlement are kept apart. Id `ord-…`, derived from the idempotency key. | `investments.domain.Order`, `investment_order` |
+| **Funding** | The transfer that brings a buy's money from the current account to the portfolio, `inv-buy-<order id>`, before the order goes to the broker. | `Order.fundingTransferId` |
+| **Trading day** | The Berlin weekday an order trades on; a market order expires at its end. No exchange holiday calendar yet. | `TradingCalendar` |
+| **Fill** | One execution of an order as the broker reported it: execution id, quantity, price. Its amount is quantity × price, rounded half-even to the cent. | `Fill`, `order_fill` |
+| **Quantity** | Units of an instrument, fractional, at most 6 fraction digits, never rounded by us. | `Quantity` |
+| **Lot** | The units one buy fill added to a holding, with what is left of them and of their cost (10 fraction digits). Sold first in, first out. | `Lot`, `lot` |
+| **Holding** | What a portfolio holds of one instrument: its lots, and the units open sells have reserved. | `Holding`, `holding` |
+| **Free units** | A holding's units not reserved by open sells: the most a new sell may take. | `Holding.free()` |
+| **Cost basis** | What the units held cost, by their lots. | `Holding.costBasis()` |
+| **Realised gain** | A sell fill's proceeds minus the FIFO cost of the lots it consumed; may be negative. | `Holding.Sale`, `Fill.realizedGain` |
+| **Payout** | Money a portfolio owes its reference account: a buy's refund, a sell's proceeds, or money that arrived with no order waiting. Each attempt is its own transfer, `inv-payout-<id>-<attempt>`. | `Payout`, `payout` |
+| **Unpaid payout** | A payout the current account refused, e.g. while blocked: the money is back on the portfolio, retried when the account is unblocked and daily, never spent. | `Payout.Status.UNPAID` |
+| **Settlement** | Whether an investment order's money is where it belongs: `PENDING`, `SETTLED`, or `UNPAID`. | `Order.Settlement` |
+| **broker-settlement** | The book account for money owed to or by the broker for fills. Securities are not posted: held in custody, off the balance sheet. | `Posting.BROKER_SETTLEMENT` |
+| **Broker** | The firm that executes investment orders on the market; outside the bank, reached over FIX. Played by `execution-simulator` locally. | `broker.v1` |
+| **FIX gateway** | The service that holds the one FIX 4.4 session to the broker and translates between it and Kafka. | `fix-gateway`, `GatewayService` |
+| **FIX session** | One connection to the broker with sequence numbers both ways; its state (sequence numbers, sent messages) is in the gateway's database. One instance holds it at a time. | `FixSession`, `sessions`, `messages` |
+| **Omnibus account** | The bank's single account at the broker (FIX tag 1); customers are never named to the broker. | `gateway.fix.account` |
 | **Command log** | A service's own input topic. Every state change starts as a message there; REST only appends to it. | `savings.commands.v1`, `payments.transfer-requests.v1`, `current-account.commands.v1` |
 | **Payment instruction** | A message from Payments: TransferFromCurrentAccount, TransferToCurrentAccount or TransferReturned. | `payments.v1.PaymentInstruction`, `application.PaymentInstruction` |
 | **Transfer** | One movement between current account and savings, identified by a `transferId` chosen by Payments. States: IN COMPLETED; OUT COMPLETED, REJECTED or RETURNED. | `domain.Transfer`, `transfer` |

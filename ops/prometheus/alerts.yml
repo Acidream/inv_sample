@@ -66,3 +66,33 @@ groups:
           severity: page
         annotations:
           summary: "{{ $value }} transfers are waiting too long for a ledger's answer"
+
+      - alert: InvestmentOrderOverdue
+        # An order is still with the broker an hour after its trading day ended (ADR 0027). The broker
+        # expires every market order at the end of its day, so a report was lost or the gateway is
+        # stuck: the customer's money is in flight on the portfolio.
+        expr: max(investments_orders_overdue) > 0 or max(gateway_orders_overdue) > 0
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "Orders are still open after their trading day ended"
+
+      - alert: InvestmentPayoutUnpaid
+        # The current account has refused a refund or proceeds for more than three days (ADR 0026): the
+        # customer's money rests on a portfolio. Retries run daily and when the account is unblocked.
+        expr: max(investments_payouts_unpaid_overdue) > 0
+        labels:
+          severity: warn
+        annotations:
+          summary: "{{ $value }} payouts unpaid for more than three days"
+
+      - alert: FixSessionDown
+        # No instance holds a logged-on FIX session to the broker on a weekday (ADR 0027). Orders wait in
+        # the gateway, and expire unsent if their trading day ends first.
+        expr: (sum(fix_session_logged_on) or vector(0)) == 0 and on() day_of_week() >= 1 and on() day_of_week() <= 5
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "The FIX session to the broker is down"

@@ -1,5 +1,6 @@
 package com.example.transfers.domain;
 
+import com.example.transfers.domain.KnownAccount.Ledger;
 import java.util.UUID;
 
 /**
@@ -18,16 +19,22 @@ public sealed interface Step {
     record CreditCurrentAccount(UUID accountId, String transferId, Money amount) implements Step {
     }
 
-    /** Savings' {@code TransferToCurrentAccount}: savings debits at once if the balance allows it. */
-    record DebitSavings(UUID accountId, String transferId, Money amount) implements Step {
+    /**
+     * A product ledger's {@code TransferToCurrentAccount}: savings or investments debits at once if it
+     * can, or rejects.
+     */
+    record DebitProductLedger(Ledger ledger, UUID accountId, String transferId, Money amount) implements Step {
     }
 
-    /** Savings' {@code TransferFromCurrentAccount}: the current account has been debited. */
-    record CreditSavings(UUID accountId, String transferId, Money amount) implements Step {
+    /** A product ledger's {@code TransferFromCurrentAccount}: the current account has been debited. */
+    record CreditProductLedger(Ledger ledger, UUID accountId, String transferId, Money amount) implements Step {
     }
 
-    /** Savings' {@code TransferReturned}: the current account refused the credit, savings credits it back. */
-    record ReturnToSavings(UUID accountId, String transferId) implements Step {
+    /**
+     * A product ledger's {@code TransferReturned}: the current account refused the credit, the product
+     * ledger credits it back.
+     */
+    record ReturnToProductLedger(Ledger ledger, UUID accountId, String transferId) implements Step {
     }
 
     record Completed(String transferId) implements Step {

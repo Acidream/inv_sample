@@ -64,6 +64,8 @@ Feature: Answering the transfer service's instructions (ADR 0018, 0021)
     Given path 'current-accounts', accountId
     And retry until response.status == 'BLOCKED'
     When method get
+    * def blocked = hooks.awaitEvent(accountId)
+    * match blocked == { type: 'CURRENT_ACCOUNT_BLOCKED', reason: 'deceased', occurredAt: '#string' }
 
     * hooks.credit(accountId, transferId, '40.00')
     * def answer = hooks.awaitEvent(accountId)

@@ -36,3 +36,7 @@ jobs:
             current-account-service/build/reports/
             platform-messaging/build/reports/
             current-account-service/build/karate-reports/
+            investment-service/build/reports/
+            investment-service/build/karate-reports/
+            fix-gateway/build/reports/
+            fix-gateway/build/karate-reports/

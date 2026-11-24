@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package broker.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option java_multiple_files = true;
+option java_package = "com.example.events.broker.v1";
+
+// Topic: broker.executions.v1 (owned by the team running fix-gateway).
+// Key:   order_id. Reports of one order are published in the order the broker sent them.
+// Delivery is at-least-once: consumers must de-duplicate on event_id; a fill is also unique per exec_id.
+//
+// Every order ends in exactly one of: OrderFilled with done = true, OrderRejected, OrderExpired.
+// An order may be filled in parts before it is rejected or expires.
+message BrokerExecution {
+  string event_id = 1;
+  google.protobuf.Timestamp occurred_at = 2;
+  string order_id = 3;
+
+  oneof payload {
+    OrderAccepted order_accepted = 10;
+    OrderFilled order_filled = 11;
+    OrderRejected order_rejected = 12;
+    OrderExpired order_expired = 13;
+  }
+}
+
+// The broker took the order. Informational: fills may arrive without it.
+message OrderAccepted {
+}
+
+// One fill. The last fill of a fully filled order has done = true.
+message OrderFilled {
+  string exec_id = 1;                          // the broker's id of this fill, unique per order
+  string quantity = 2;                         // positive decimal, up to 6 fraction digits
+  string price = 3;                            // EUR per unit, up to 4 fraction digits
+  bool done = 4;                               // nothing more will be filled
+  google.protobuf.Timestamp traded_at = 5;
+}
+
+message OrderRejected {
+  string reason = 1;                           // free text for people, e.g. "unknown instrument"
+}
+
+// The trading day ended; whatever wasn't filled by then never will be.
+message OrderExpired {
+}

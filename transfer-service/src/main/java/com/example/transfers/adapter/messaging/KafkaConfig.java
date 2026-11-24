@@ -26,14 +26,15 @@ class KafkaConfig {
             TransferProperties properties) {
         var topics = properties.topics();
         return DeadLetters.errorHandler(template, registry,
-                List.of(topics.transferRequests(), topics.savingsEvents(), topics.currentAccountEvents()),
+                List.of(topics.transferRequests(), topics.savingsEvents(), topics.currentAccountEvents(),
+                        topics.investmentEvents()),
                 List.of(IllegalTransferStateException.class, AccountConflictException.class,
                         TransferIdInUseException.class));
     }
 
     /**
-     * For local development and tests; the savings and current account topics belong to those
-     * teams.
+     * For local development and tests; the savings, current account and investments topics belong
+     * to those teams.
      */
     @Bean
     KafkaAdmin.NewTopics topics(TransferProperties properties) {
@@ -44,6 +45,8 @@ class KafkaConfig {
                 topics.savingsInstructions(),
                 topics.currentAccountInstructions(),
                 topics.savingsEvents(), DeadLetters.of(topics.savingsEvents()),
-                topics.currentAccountEvents(), DeadLetters.of(topics.currentAccountEvents())));
+                topics.currentAccountEvents(), DeadLetters.of(topics.currentAccountEvents()),
+                topics.investmentInstructions(),
+                topics.investmentEvents(), DeadLetters.of(topics.investmentEvents())));
     }
 }

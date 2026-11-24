@@ -23,7 +23,9 @@ contracts the transfer service already uses (`payments.current-account-instructi
 - A debit is carried out if the balance after it is not below minus the account's overdraft
   limit; otherwise `DebitRejected` ("overdraft limit exceeded"). The limit is set when the account
   is opened.
-- A blocked account refuses transfers both ways ("account blocked"). If it refuses a credit, the
+- A blocked account refuses transfers both ways ("account blocked"). Blocking and unblocking are
+  published (`CurrentAccountBlocked`, `CurrentAccountUnblocked`), so a payout refused while the account
+  was blocked can be retried once it isn't (ADR 0026). If it refuses a credit, the
   transfer service gives the money back to savings (ADR 0015's one compensating step).
 - Money arriving from outside the bank (`ReceivePayment`, e.g. a salary) is always booked, even on a
   blocked account, because it has already arrived. A payment for an unknown account is rejected.

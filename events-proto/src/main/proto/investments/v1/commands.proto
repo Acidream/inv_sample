@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package investments.v1;
+
+import "common.proto";
+import "google/protobuf/timestamp.proto";
+
+option java_multiple_files = true;
+option java_package = "com.example.events.investments.v1";
+
+// Topic: investments.commands.v1 (owned by the Investments team; its command log, ADR 0019).
+// Key:   portfolio_id, so the commands for one portfolio are applied in the order they were accepted.
+// Written by the investments REST intake.
+message InvestmentCommand {
+  string command_id = 1;                       // unique per message, used for de-duplication
+  google.protobuf.Timestamp occurred_at = 2;   // when the request was accepted; decisions are made as of then
+  string portfolio_id = 3;
+
+  oneof payload {
+    OpenPortfolio open_portfolio = 10;
+    PlaceOrder place_order = 11;
+  }
+}
+
+message OpenPortfolio {
+  string customer_id = 1;
+  string reference_account_id = 2;             // the customer's current account
+}
+
+// A market order. A buy names an amount of money, a sell a quantity (ADR 0026).
+message PlaceOrder {
+  enum Side {
+    SIDE_UNSPECIFIED = 0;
+    BUY = 1;
+    SELL = 2;
+  }
+  string order_id = 1;                         // derived from the client's Idempotency-Key; applied once
+  string isin = 2;
+  Side side = 3;
+  common.v1.Money amount = 4;                  // BUY only
+  string quantity = 5;                         // SELL only: positive decimal, up to 6 fraction digits
+}

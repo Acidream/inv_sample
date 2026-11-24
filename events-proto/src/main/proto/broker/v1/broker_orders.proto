@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package broker.v1;
+
+import "common.proto";
+import "google/protobuf/timestamp.proto";
+
+option java_multiple_files = true;
+option java_package = "com.example.events.broker.v1";
+
+// Topic: broker.orders.v1 (owned by the team running fix-gateway; its command log, ADR 0027).
+// Key:   order_id.
+// Written by investment-service. The contract says nothing about FIX: a second broker or protocol
+// needs another gateway, not another contract.
+message BrokerOrder {
+  string message_id = 1;                       // unique per message, used for de-duplication
+  google.protobuf.Timestamp occurred_at = 2;
+
+  oneof payload {
+    PlaceOrder place_order = 10;
+  }
+}
+
+// A market order, valid for its trading day only. Placed once per order_id; the same order_id with
+// different content is a contract violation.
+message PlaceOrder {
+  enum Side {
+    SIDE_UNSPECIFIED = 0;
+    BUY = 1;
+    SELL = 2;
+  }
+  string order_id = 1;
+  string isin = 2;
+  Side side = 3;
+  common.v1.Money cash_amount = 4;             // BUY: spend at most this much
+  string quantity = 5;                         // SELL: positive decimal, up to 6 fraction digits
+  string trading_day = 6;                      // ISO date (Europe/Berlin); the order expires at its end
+}

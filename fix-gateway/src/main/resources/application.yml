@@ -1,0 +1,57 @@
+server:
+  port: 8084
+
+spring:
+  application:
+    name: fix-gateway
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5436/gateway}
+    username: ${DB_USER:gateway}
+    password: ${DB_PASSWORD:gateway}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.ByteArraySerializer
+      acks: all
+      properties:
+        enable.idempotence: true
+    consumer:
+      group-id: fix-gateway
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.ByteArrayDeserializer
+    listener:
+      ack-mode: record
+      concurrency: ${gateway.topics.partitions}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, prometheus
+  metrics:
+    tags:
+      application: fix-gateway
+
+gateway:
+  topics:
+    orders: broker.orders.v1
+    executions: broker.executions.v1
+    partitions: 3
+  fix:
+    host: ${FIX_HOST:localhost}
+    port: ${FIX_PORT:9878}
+    sender-comp-id: ${FIX_SENDER_COMP_ID:BANK}
+    target-comp-id: ${FIX_TARGET_COMP_ID:BROKER}
+    account: ${FIX_ACCOUNT:OMNIBUS-1}
+    heartbeat-seconds: 30
+    reconnect-interval: 5s
+    leader-poll: 5s
+  dispatch-interval-ms: 200
+  overdue-after: 1h
+# Outbox relay and retention: platform-messaging's defaults (platform.messaging.*).

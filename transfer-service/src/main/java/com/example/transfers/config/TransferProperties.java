@@ -23,6 +23,7 @@ public record TransferProperties(
 
     public record Topics(@NotBlank String transferRequests, @NotBlank String transferEvents,
             @NotBlank String savingsInstructions, @NotBlank String currentAccountInstructions,
-            @NotBlank String savingsEvents, @NotBlank String currentAccountEvents, @Positive int partitions) {
+            @NotBlank String savingsEvents, @NotBlank String currentAccountEvents,
+            @NotBlank String investmentInstructions, @NotBlank String investmentEvents, @Positive int partitions) {
     }
 }

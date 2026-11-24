@@ -130,6 +130,8 @@ Feature: Opening current accounts, incoming payments and blocking (ADR 0021)
     And retry until response.status == 'BLOCKED'
     When method get
     Then match response contains { blockReason: 'suspected fraud', balance: '50.00', available: '0.00' }
+    * def blocked = hooks.awaitEvent(accountId)
+    * match blocked contains { type: 'CURRENT_ACCOUNT_BLOCKED', reason: 'suspected fraud' }
 
     Given path 'current-accounts', accountId, 'block'
     When method delete
@@ -138,6 +140,8 @@ Feature: Opening current accounts, incoming payments and blocking (ADR 0021)
     And retry until response.status == 'OPEN'
     When method get
     Then match response contains { blockReason: null, available: '150.00' }
+    * def unblocked = hooks.awaitEvent(accountId)
+    * match unblocked.type == 'CURRENT_ACCOUNT_UNBLOCKED'
 
   Scenario: blocking an account that doesn't exist is refused
     Given path 'current-accounts', hooks.uuid(), 'block'

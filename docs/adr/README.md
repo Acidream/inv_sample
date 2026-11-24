@@ -5,7 +5,7 @@ Format: [Michael Nygard](https://cognitect.com/blog/2011/11/15/documenting-archi
 
 | # | Decision | Status |
 |---|---|---|
-| [0001](0001-scope-savings-only.md) | Scope: savings accounts only, conscious omissions | Accepted |
+| [0001](0001-scope-savings-only.md) | Scope: savings accounts only, conscious omissions | Accepted; investments built in 0026 |
 | [0002](0002-one-service-and-a-contract-library.md) | One service plus a shared Protobuf contract library | Superseded by 0018 |
 | [0003](0003-hexagonal-layers-with-jpa-on-the-domain.md) | Lightweight hexagonal layers, JPA annotations allowed on the domain | Partly superseded by 0016 |
 | [0004](0004-money-and-append-only-ledger.md) | Money as BigDecimal, append-only ledger with cached balance | Accepted |
@@ -30,3 +30,6 @@ Format: [Michael Nygard](https://cognitect.com/blog/2011/11/15/documenting-archi
 | [0023](0023-watching-transfers-in-flight.md) | Watching transfers in flight: stuck transfers, late requests, account conflicts | Accepted |
 | [0024](0024-outcomes-checked-against-own-records.md) | Outcomes checked against own records; invalid messages named; intake outside transactions; dated off-sale | Accepted |
 | [0025](0025-post-with-an-idempotency-key.md) | REST creates with `POST` and an `Idempotency-Key`; ids derived from the key | Accepted |
+| [0026](0026-investment-service.md) | The investment service: portfolios, orders by amount, FIFO holdings | Accepted |
+| [0027](0027-fix-gateway.md) | The FIX gateway: one session to the broker, Kafka on the inside | Accepted |
+| [0028](0028-investments-as-a-third-ledger.md) | Investments as a third ledger in the transfer service | Accepted |

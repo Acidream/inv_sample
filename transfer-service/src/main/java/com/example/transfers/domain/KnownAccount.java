@@ -9,7 +9,11 @@ import java.util.UUID;
  */
 public record KnownAccount(UUID accountId, UUID customerId, Ledger ledger) {
 
-    public enum Ledger { SAVINGS, CURRENT_ACCOUNT }
+    /**
+     * Which ledger holds the account. Savings and investments are product ledgers: they take the same
+     * instructions ({@code payments.v1.PaymentInstruction}) and answer them the same way (ADR 0028).
+     */
+    public enum Ledger { SAVINGS, CURRENT_ACCOUNT, INVESTMENTS }
 
     public KnownAccount {
         Objects.requireNonNull(accountId, "accountId");

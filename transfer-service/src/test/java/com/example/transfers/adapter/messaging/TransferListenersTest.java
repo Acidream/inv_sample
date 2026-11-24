@@ -4,6 +4,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.example.events.currentaccount.v1.CurrentAccountEvent;
+import com.example.events.investments.v1.PortfolioEvent;
 import com.example.events.savings.v1.AccountEvent;
 import com.example.transfers.application.TransferService;
 import com.google.protobuf.ByteString;
@@ -45,6 +46,19 @@ class TransferListenersTest {
                 .build();
 
         listeners.onSavingsEvent(record("savings.account-events.v1", event.toByteArray()));
+
+        verifyNoInteractions(transfers);
+    }
+
+    @Test
+    void onInvestmentEvent_EventOfNewerType_IsSkipped() throws Exception {
+        var event = PortfolioEvent.newBuilder()
+                .setEventId(UUID.randomUUID().toString())
+                .setPortfolioId(UUID.randomUUID().toString())
+                .setUnknownFields(newerPayload())
+                .build();
+
+        listeners.onInvestmentEvent(record("investments.account-events.v1", event.toByteArray()));
 
         verifyNoInteractions(transfers);
     }

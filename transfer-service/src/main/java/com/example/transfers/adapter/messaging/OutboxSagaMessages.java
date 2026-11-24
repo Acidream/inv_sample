@@ -16,6 +16,7 @@ import com.example.events.payments.v1.TransferToCurrentAccount;
 import com.example.platform.messaging.Outbox;
 import com.example.transfers.application.port.SagaMessages;
 import com.example.transfers.config.TransferProperties;
+import com.example.transfers.domain.KnownAccount.Ledger;
 import com.example.transfers.domain.Step;
 import java.time.Clock;
 import java.util.UUID;
@@ -49,17 +50,17 @@ class OutboxSagaMessages implements SagaMessages {
                     instruction(credit.accountId()).setCreditCurrentAccount(CreditCurrentAccount.newBuilder()
                             .setTransferId(credit.transferId())
                             .setAmount(money(credit.amount()))));
-            case Step.DebitSavings debit -> savings(debit.accountId().toString(), savingsInstruction(debit.accountId())
+            case Step.DebitProductLedger debit -> productLedger(debit.ledger(), productInstruction(debit.accountId())
                     .setTransferToCurrentAccount(TransferToCurrentAccount.newBuilder()
                             .setTransferId(debit.transferId())
                             .setAmount(money(debit.amount()))));
-            case Step.CreditSavings credit -> savings(credit.accountId().toString(),
-                    savingsInstruction(credit.accountId()).setTransferFromCurrentAccount(
+            case Step.CreditProductLedger credit -> productLedger(credit.ledger(),
+                    productInstruction(credit.accountId()).setTransferFromCurrentAccount(
                             TransferFromCurrentAccount.newBuilder()
                                     .setTransferId(credit.transferId())
                                     .setAmount(money(credit.amount()))));
-            case Step.ReturnToSavings returned -> savings(returned.accountId().toString(),
-                    savingsInstruction(returned.accountId()).setTransferReturned(TransferReturned.newBuilder()
+            case Step.ReturnToProductLedger returned -> productLedger(returned.ledger(),
+                    productInstruction(returned.accountId()).setTransferReturned(TransferReturned.newBuilder()
                             .setTransferId(returned.transferId())));
             case Step.Completed completed -> event(event(completed.transferId())
                     .setTransferCompleted(TransferCompleted.getDefaultInstance()));
@@ -78,7 +79,7 @@ class OutboxSagaMessages implements SagaMessages {
                 .setAccountId(accountId.toString());
     }
 
-    private PaymentInstruction.Builder savingsInstruction(UUID accountId) {
+    private PaymentInstruction.Builder productInstruction(UUID accountId) {
         return PaymentInstruction.newBuilder()
                 .setEventId(UUID.randomUUID().toString())
                 .setOccurredAt(timestamp(clock.instant()))
@@ -97,9 +98,15 @@ class OutboxSagaMessages implements SagaMessages {
         outbox.add(topics.currentAccountInstructions(), key, built.getPayloadCase().name(), built.toByteArray());
     }
 
-    private void savings(String key, PaymentInstruction.Builder message) {
+    /** Savings and investments take the same instructions, each on its own topic (ADR 0028). */
+    private void productLedger(Ledger ledger, PaymentInstruction.Builder message) {
+        var topic = switch (ledger) {
+            case SAVINGS -> topics.savingsInstructions();
+            case INVESTMENTS -> topics.investmentInstructions();
+            case CURRENT_ACCOUNT -> throw new IllegalArgumentException("The current account has its own instructions");
+        };
         var built = message.build();
-        outbox.add(topics.savingsInstructions(), key, built.getPayloadCase().name(), built.toByteArray());
+        outbox.add(topic, built.getAccountId(), built.getPayloadCase().name(), built.toByteArray());
     }
 
     private void event(TransferEvent.Builder message) {

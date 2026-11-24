@@ -6,6 +6,7 @@ import static com.example.transfers.adapter.messaging.WireFormat.transferId;
 import static com.example.transfers.adapter.messaging.WireFormat.uuid;
 
 import com.example.events.currentaccount.v1.CurrentAccountEvent;
+import com.example.events.investments.v1.PortfolioEvent;
 import com.example.events.payments.v1.TransferRequest;
 import com.example.events.savings.v1.AccountEvent;
 import com.example.transfers.application.LedgerOutcome;
@@ -21,7 +22,7 @@ import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
 /**
- * Everything the transfer service consumes: its own request log, and the events of the two ledgers.
+ * Everything the transfer service consumes: its own request log, and the events of the three ledgers.
  * Ledger events become account directory entries and saga outcomes; the rest is ignored. Offsets are
  * committed after the transaction, so a crash causes a redelivery, recognised by message id.
  *
@@ -89,8 +90,35 @@ class TransferListeners {
         }
     }
 
+    @KafkaListener(topics = "${transfers.topics.investment-events}")
+    void onInvestmentEvent(ConsumerRecord<String, byte[]> record) throws InvalidProtocolBufferException {
+        var event = PortfolioEvent.parseFrom(record.value());
+        var id = "investments:" + messageId(event.getEventId());
+        var portfolio = event.getPortfolioId();
+        switch (event.getPayloadCase()) {
+            case PORTFOLIO_OPENED -> transfers.accountOpened(id, new KnownAccount(
+                    uuid(portfolio, "portfolio_id"),
+                    uuid(event.getPortfolioOpened().getCustomerId(), "customer_id"), Ledger.INVESTMENTS));
+            case MONEY_DEPOSITED -> investments(id, portfolio, event.getMoneyDeposited().getTransferId(),
+                    Kind.CREDITED, "");
+            case MONEY_WITHDRAWN -> investments(id, portfolio, event.getMoneyWithdrawn().getTransferId(),
+                    Kind.DEBITED, "");
+            case WITHDRAWAL_REJECTED -> investments(id, portfolio, event.getWithdrawalRejected().getTransferId(),
+                    Kind.DEBIT_REJECTED, event.getWithdrawalRejected().getReason());
+            case WITHDRAWAL_RETURNED -> investments(id, portfolio, event.getWithdrawalReturned().getTransferId(),
+                    Kind.RETURNED, "");
+            default -> log.debug("Ignoring investments event {} ({}): not a transfer's business", id,
+                    event.getPayloadCase());
+        }
+    }
+
     private void savings(String messageId, String accountId, String transferId, Kind kind, String detail) {
         transfers.outcome(new LedgerOutcome(messageId, Ledger.SAVINGS, uuid(accountId, "account_id"),
+                transferId(transferId), kind, detail(detail)));
+    }
+
+    private void investments(String messageId, String portfolioId, String transferId, Kind kind, String detail) {
+        transfers.outcome(new LedgerOutcome(messageId, Ledger.INVESTMENTS, uuid(portfolioId, "portfolio_id"),
                 transferId(transferId), kind, detail(detail)));
     }
 

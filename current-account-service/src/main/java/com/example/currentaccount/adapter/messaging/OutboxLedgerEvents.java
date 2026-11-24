@@ -8,10 +8,12 @@ import com.example.currentaccount.config.CurrentAccountProperties;
 import com.example.currentaccount.domain.CurrentAccount;
 import com.example.currentaccount.domain.TransferAnswer;
 import com.example.events.currentaccount.v1.CreditRejected;
+import com.example.events.currentaccount.v1.CurrentAccountBlocked;
 import com.example.events.currentaccount.v1.CurrentAccountCredited;
 import com.example.events.currentaccount.v1.CurrentAccountDebited;
 import com.example.events.currentaccount.v1.CurrentAccountEvent;
 import com.example.events.currentaccount.v1.CurrentAccountOpened;
+import com.example.events.currentaccount.v1.CurrentAccountUnblocked;
 import com.example.events.currentaccount.v1.DebitRejected;
 import com.example.platform.messaging.Outbox;
 import java.time.Instant;
@@ -53,6 +55,18 @@ class OutboxLedgerEvents implements LedgerEvents {
         } else {
             event.setCreditRejected(CreditRejected.newBuilder()
                     .setTransferId(transferId).setReason(answer.rejectionReason()));
+        }
+        publish(event);
+    }
+
+    @Override
+    public void blockChanged(CurrentAccount account, Instant at) {
+        var event = event(account.id(), at);
+        if (account.status() == CurrentAccount.Status.BLOCKED) {
+            event.setCurrentAccountBlocked(CurrentAccountBlocked.newBuilder()
+                    .setReason(account.blockReason().orElseThrow()));
+        } else {
+            event.setCurrentAccountUnblocked(CurrentAccountUnblocked.getDefaultInstance());
         }
         publish(event);
     }
