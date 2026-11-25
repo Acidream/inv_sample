@@ -10,6 +10,7 @@ import com.example.investments.application.BrokerReport;
 import com.example.investments.application.Command;
 import com.example.investments.application.Instruction;
 import com.example.investments.application.TransferOutcome;
+import com.example.investments.domain.Execution;
 import com.example.investments.domain.Instrument;
 import com.example.investments.domain.Money;
 import com.example.investments.domain.Order;
@@ -51,12 +52,12 @@ final class WireFormat {
     // --- commands ---------------------------------------------------------------------------------
 
     static Command command(InvestmentCommand message) {
-        var portfolioId = uuid(message.getPortfolioId(), "portfolio_id");
-        var at = instant(message.hasOccurredAt() ? message.getOccurredAt() : null, "occurred_at");
+        var portfolioId = WireValues.uuid(message.getPortfolioId(), "portfolio_id");
+        var at = occurredAt(message.hasOccurredAt(), message.getOccurredAt());
         return switch (message.getPayloadCase()) {
             case OPEN_PORTFOLIO -> new Command.OpenPortfolio(portfolioId,
-                    uuid(message.getOpenPortfolio().getCustomerId(), "customer_id"),
-                    uuid(message.getOpenPortfolio().getReferenceAccountId(), "reference_account_id"), at);
+                    WireValues.uuid(message.getOpenPortfolio().getCustomerId(), "customer_id"),
+                    WireValues.uuid(message.getOpenPortfolio().getReferenceAccountId(), "reference_account_id"), at);
             case PLACE_ORDER -> new Command.PlaceOrder(order(portfolioId, message.getPlaceOrder(), at));
             case PAYLOAD_NOT_SET -> throw new InvalidMessageException("Command without payload");
         };
@@ -90,7 +91,7 @@ final class WireFormat {
     static InvestmentCommand toMessage(String commandId, Command command) {
         var message = InvestmentCommand.newBuilder()
                 .setCommandId(commandId)
-                .setOccurredAt(timestamp(command.acceptedAt()))
+                .setOccurredAt(WireValues.timestamp(command.acceptedAt()))
                 .setPortfolioId(command.portfolioId().toString());
         switch (command) {
             case Command.OpenPortfolio open -> message.setOpenPortfolio(OpenPortfolio.newBuilder()
@@ -122,8 +123,8 @@ final class WireFormat {
 
     static Instruction instruction(PaymentInstruction message) {
         var messageId = WireValues.id(message.getEventId(), "event_id", MAX_MESSAGE_ID_LENGTH);
-        var portfolioId = uuid(message.getAccountId(), "account_id");
-        var at = instant(message.hasOccurredAt() ? message.getOccurredAt() : null, "occurred_at");
+        var portfolioId = WireValues.uuid(message.getAccountId(), "account_id");
+        var at = occurredAt(message.hasOccurredAt(), message.getOccurredAt());
         return switch (message.getPayloadCase()) {
             case TRANSFER_FROM_CURRENT_ACCOUNT -> new Instruction(messageId, portfolioId,
                     transferId(message.getTransferFromCurrentAccount().getTransferId()), Kind.DEPOSIT,
@@ -141,7 +142,7 @@ final class WireFormat {
     static TransferOutcome outcome(TransferEvent event) {
         var messageId = WireValues.id(event.getEventId(), "event_id", MAX_MESSAGE_ID_LENGTH);
         var transferId = transferId(event.getTransferId());
-        var at = instant(event.hasOccurredAt() ? event.getOccurredAt() : null, "occurred_at");
+        var at = occurredAt(event.hasOccurredAt(), event.getOccurredAt());
         return switch (event.getPayloadCase()) {
             case TRANSFER_COMPLETED -> new TransferOutcome(messageId, transferId, true, "", "", at);
             case TRANSFER_FAILED -> new TransferOutcome(messageId, transferId, false,
@@ -157,15 +158,15 @@ final class WireFormat {
     static BrokerReport report(BrokerExecution message) {
         var messageId = WireValues.id(message.getEventId(), "event_id", MAX_MESSAGE_ID_LENGTH);
         var orderId = WireValues.id(message.getOrderId(), "order_id", MAX_ORDER_ID_LENGTH);
-        var at = instant(message.hasOccurredAt() ? message.getOccurredAt() : null, "occurred_at");
+        var at = occurredAt(message.hasOccurredAt(), message.getOccurredAt());
         return switch (message.getPayloadCase()) {
             case ORDER_ACCEPTED -> new BrokerReport.Accepted(messageId, orderId, at);
             case ORDER_FILLED -> {
                 var fill = message.getOrderFilled();
-                yield new BrokerReport.Filled(messageId, orderId,
-                        WireValues.id(fill.getExecId(), "exec_id", MAX_EXEC_ID_LENGTH),
-                        positiveQuantity(fill.getQuantity()), price(fill.getPrice()), fill.getDone(),
-                        instant(fill.hasTradedAt() ? fill.getTradedAt() : null, "traded_at"));
+                var execution = new Execution(WireValues.id(fill.getExecId(), "exec_id", MAX_EXEC_ID_LENGTH),
+                        positiveQuantity(fill.getQuantity()), price(fill.getPrice()),
+                        WireValues.instant(fill.hasTradedAt() ? fill.getTradedAt() : null, "traded_at"));
+                yield new BrokerReport.Filled(messageId, orderId, execution, fill.getDone(), at);
             }
             case ORDER_REJECTED -> new BrokerReport.Rejected(messageId, orderId,
                     WireValues.text(WireValues.required(message.getOrderRejected().getReason(), "reason"),
@@ -193,10 +194,6 @@ final class WireFormat {
                 .setAmount(money.toString())
                 .setCurrency(Money.CURRENCY)
                 .build();
-    }
-
-    static Timestamp timestamp(Instant instant) {
-        return WireValues.timestamp(instant);
     }
 
     private static Quantity positiveQuantity(String raw) {
@@ -230,11 +227,8 @@ final class WireFormat {
         return WireValues.id(value, "transfer_id", MAX_TRANSFER_ID_LENGTH);
     }
 
-    private static UUID uuid(String value, String field) {
-        return WireValues.uuid(value, field);
-    }
-
-    private static Instant instant(Timestamp timestamp, String field) {
-        return WireValues.instant(timestamp, field);
+    /** Every message names when it happened; proto3 can only tell a missing time by its presence. */
+    static Instant occurredAt(boolean set, Timestamp occurredAt) {
+        return WireValues.instant(set ? occurredAt : null, "occurred_at");
     }
 }

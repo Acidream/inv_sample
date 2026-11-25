@@ -5,11 +5,11 @@ import com.example.events.broker.v1.OrderAccepted;
 import com.example.events.broker.v1.OrderExpired;
 import com.example.events.broker.v1.OrderFilled;
 import com.example.events.broker.v1.OrderRejected;
+import com.example.fixgateway.application.BrokerReport;
 import com.example.fixgateway.application.port.Reports;
 import com.example.fixgateway.config.GatewayProperties;
 import com.example.platform.messaging.Outbox;
 import com.example.platform.messaging.WireValues;
-import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
@@ -37,14 +37,13 @@ class OutboxReports implements Reports {
     }
 
     @Override
-    public void filled(String orderId, String execId, BigDecimal quantity, BigDecimal price, boolean done,
-            Instant tradedAt, Instant at) {
-        publish(report(orderId, at).setOrderFilled(OrderFilled.newBuilder()
-                .setExecId(execId)
-                .setQuantity(quantity.toPlainString())
-                .setPrice(price.toPlainString())
-                .setDone(done)
-                .setTradedAt(WireValues.timestamp(tradedAt))));
+    public void filled(BrokerReport.Filled fill, Instant at) {
+        publish(report(fill.orderId(), at).setOrderFilled(OrderFilled.newBuilder()
+                .setExecId(fill.execId())
+                .setQuantity(fill.quantity().toPlainString())
+                .setPrice(fill.price().toPlainString())
+                .setDone(fill.done())
+                .setTradedAt(WireValues.timestamp(fill.tradedAt()))));
     }
 
     @Override

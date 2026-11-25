@@ -48,35 +48,40 @@ public final class Portfolio {
         return customerId.equals(otherCustomerId) && referenceAccountId.equals(otherReferenceAccountId);
     }
 
-    public CashEntry credit(CashEntry.Type type, Money amount, String reference, String orderId,
-            CashEntry.Trade trade, Instant at) {
-        if (!type.isCredit()) {
-            throw new IllegalArgumentException(type + " is not a credit");
-        }
-        return book(type, amount.amount(), reference, orderId, trade, at);
-    }
-
     /**
-     * @throws IllegalStateException if the portfolio doesn't hold that much: every debit pays for
-     *                               money the portfolio received for it, so this is a bug
+     * Books money on the portfolio's ledger, in or out as its type says.
+     *
+     * @throws IllegalStateException if money leaves that the portfolio doesn't hold: every debit pays
+     *                               for money the portfolio received for it, so this is a bug
      */
-    public CashEntry debit(CashEntry.Type type, Money amount, String reference, String orderId,
-            CashEntry.Trade trade, Instant at) {
-        if (type.isCredit()) {
-            throw new IllegalArgumentException(type + " is not a debit");
+    public CashEntry book(CashEntry.Booking booking) {
+        var amount = booking.amount().amount();
+        if (!booking.type().isCredit() && cash.compareTo(amount) < 0) {
+            throw new IllegalStateException("Portfolio " + id + " holds " + cash + ", can't pay " + booking.amount()
+                    + " for " + booking.reference());
         }
-        if (cash.compareTo(amount.amount()) < 0) {
-            throw new IllegalStateException("Portfolio " + id + " holds " + cash + ", can't pay " + amount
-                    + " for " + reference);
-        }
-        return book(type, amount.amount().negate(), reference, orderId, trade, at);
-    }
-
-    private CashEntry book(CashEntry.Type type, BigDecimal signed, String reference, String orderId,
-            CashEntry.Trade trade, Instant at) {
+        var signed = booking.type().isCredit() ? amount : amount.negate();
         cash = cash.add(signed);
         lastEntryNo++;
-        return new CashEntry(id, lastEntryNo, type, signed, cash, reference, orderId, trade, at);
+        return new CashEntry(id, lastEntryNo, booking.type(), signed, cash, booking.reference(), booking.orderId(),
+                booking.trade(), booking.at());
+    }
+
+    /** The transfer that brings a buy's money from the reference account. */
+    public TransferRequest funding(Order order) {
+        if (!order.portfolioId().equals(id) || order.side() != Order.Side.BUY) {
+            throw new IllegalArgumentException("Order " + order.id() + " is not a buy of portfolio " + id);
+        }
+        return new TransferRequest(Order.fundingTransferId(order.id()), customerId, referenceAccountId, id,
+                order.request().amount(), order.request().acceptedAt());
+    }
+
+    /** The transfer of a payout's current attempt to the reference account. */
+    public TransferRequest payout(Payout payout, Instant at) {
+        if (!payout.portfolioId().equals(id)) {
+            throw new IllegalArgumentException("Payout " + payout.id() + " is not owed by portfolio " + id);
+        }
+        return new TransferRequest(payout.transferId(), customerId, id, referenceAccountId, payout.amount(), at);
     }
 
     public UUID id() {

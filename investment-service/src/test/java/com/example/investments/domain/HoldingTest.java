@@ -15,8 +15,9 @@ class HoldingTest {
     private final Holding holding = Holding.empty(UUID.randomUUID(), "DE0007164600");
 
     private void buy(String quantity, String cost) {
-        holding.bought(Lot.bought("o", "e" + quantity + cost, Quantity.of(quantity), Money.of(cost), AT),
-                Price.of("1"));
+        var fill = new Fill("e" + quantity + cost, Quantity.of(quantity), Price.of("1"), new BigDecimal(cost), null,
+                AT);
+        holding.bought(Lot.bought(fill, "o"), Price.of("1"));
     }
 
     @Test
@@ -25,7 +26,7 @@ class HoldingTest {
         buy("2", "300.00");
         holding.reserve(Quantity.of("3"));
 
-        var sale = holding.sold(Quantity.of("3"), Price.of("160"), Money.of("480.00"));
+        var sale = holding.sold(Quantity.of("3"), Price.of("160"), new BigDecimal("480.00"));
 
         assertThat(sale.costOfLotsSold()).isEqualByComparingTo("350");
         assertThat(sale.realizedGain()).isEqualTo(new BigDecimal("130.00"));
@@ -41,7 +42,7 @@ class HoldingTest {
 
         var costs = BigDecimal.ZERO;
         for (int i = 0; i < 3; i++) {
-            costs = costs.add(holding.sold(Quantity.of("1"), Price.of("40"), Money.of("40.00")).costOfLotsSold());
+            costs = costs.add(holding.sold(Quantity.of("1"), Price.of("40"), new BigDecimal("40.00")).costOfLotsSold());
         }
 
         assertThat(costs).isEqualByComparingTo("100");
@@ -61,7 +62,7 @@ class HoldingTest {
     @Test
     void sold_UnitsNotReserved_ThrowsIllegalState() {
         buy("2", "20.00");
-        assertThatThrownBy(() -> holding.sold(Quantity.of("1"), Price.of("10"), Money.of("10.00")))
+        assertThatThrownBy(() -> holding.sold(Quantity.of("1"), Price.of("10"), new BigDecimal("10.00")))
                 .isInstanceOf(IllegalStateException.class);
     }
 }

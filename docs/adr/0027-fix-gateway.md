@@ -1,6 +1,6 @@
 # 0027 – The FIX gateway: one session to the broker, Kafka on the inside
 
-Date: 2026-11-24 · Status: Accepted · For [0026](0026-investment-service.md)
+Date: 2026-11-24 · Status: Accepted · For [0026](0026-investment-service.md) · Amends [0008](0008-ordering-and-concurrency.md) (row locks)
 
 ## Context
 
@@ -36,7 +36,7 @@ broker never learns who the customer is.
 | ExecType | Published |
 |---|---|
 | New | `OrderAccepted` (once) |
-| Trade (and the older Partial fill / Fill) | `OrderFilled` with `LastQty`, `LastPx`; `done` when `OrdStatus=Filled` |
+| Trade (and the older Partial fill / Fill) | `OrderFilled` with `LastQty`, `LastPx`, `TransactTime` (or the gateway's clock if it is missing); `done` when `OrdStatus=Filled` |
 | Rejected | `OrderRejected` with `Text`; not if `OrdRejReason=Duplicate order` while the gateway has the order with the broker |
 | Expired | `OrderExpired` |
 | Canceled | `OrderRejected` ("cancelled by the broker: …") |
@@ -51,6 +51,10 @@ broker never learns who the customer is.
   `SENDING` and committed **before** it goes out, then `SENT`. A crash in between leaves it `SENDING`:
   the gateway doesn't know whether it left, so it asks instead of sending it again (recovery, below).
   So an order reaches the broker at most once, unless the broker loses it.
+- *One writer per order at a time.* The consumer, the dispatcher and the report callback all change
+  `broker_order` rows, so each locks the row it changes (`select … for update`) for its one short
+  transaction, as investments locks its portfolios (ADR 0026, amending ADR 0008). The network is never
+  inside such a transaction.
 - *Reports in.* Each report is applied in a transaction before QuickFIX/J counts it as received;
   fills are de-duplicated by exec id (`broker_execution`), so resends and `PossDupFlag` copies reach
   investments once. Investments de-duplicates again by message id and exec id (ADR 0007). If applying
@@ -63,8 +67,11 @@ broker never learns who the customer is.
   session where it was, and a message handed to the session is resent if the broker asks for it.
 
 **Recovery after every logon.** The gateway sends an `OrderStatusRequest` for every order the broker
-may have and hasn't ended. A `SENDING` order the broker doesn't know never left: it goes out again.
-A `SENT` or accepted order the broker doesn't know was lost by the broker: investments gets
+may have and hasn't ended. Sending and recovery take turns: recovery waits for a send in progress to
+finish, and nothing is sent until every status request is out. Otherwise a status request could
+overtake the order it asks about, the broker would answer "unknown", and the order would be sent
+twice, or refunded while the broker fills it. A `SENDING` order the broker doesn't know never left: it
+goes out again. A `SENT` or accepted order the broker doesn't know was lost by the broker: investments gets
 `OrderRejected` ("the broker does not know the order"), so the order's money is refunded rather than
 left in flight. A known order is left alone; its reports follow.
 
@@ -75,8 +82,13 @@ broker, and investments refunds it.
 
 **One instance holds the session.** Sequence numbers belong to one connection. Every instance tries a
 Postgres advisory lock on a connection of its own; the one that gets it starts the session and keeps
-it while that connection lives, and stops it if the connection is lost. Another instance then takes
-over from the shared session state.
+it while it holds the lock, which it checks on that connection every `leader-poll`, and stops the
+session when the check fails. Another instance then takes over from the shared session state.
+Postgres frees the lock as soon as it sees the holder's connection end, possibly before the holder's
+next check, so a new holder waits `takeover-delay` (longer than `leader-poll` plus the check's
+timeout, enforced at start-up) before it logs on: by then the former holder has stopped its session.
+A holder whose process stalls longer than that is not fenced; the last line is the broker's acceptor,
+which, like QuickFIX/J's, refuses a second logon while the session is logged on.
 
 **Monitoring.** `fix.session.logged.on` (alert `FixSessionDown`: no logged-on session for five minutes
 on a weekday), `fix.session.held`, and `gateway.orders.overdue`, orders the broker hasn't ended an hour

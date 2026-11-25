@@ -5,9 +5,9 @@ import com.example.events.currentaccount.v1.CurrentAccountEvent;
 import com.example.events.investments.v1.InvestmentCommand;
 import com.example.events.payments.v1.PaymentInstruction;
 import com.example.events.payments.v1.TransferEvent;
-import com.example.investments.application.Executions;
 import com.example.investments.application.InvestmentService;
 import com.example.investments.application.MoneyMovements;
+import com.example.investments.application.TradingDesk;
 import com.example.platform.messaging.WireValues;
 import com.google.protobuf.InvalidProtocolBufferException;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -31,12 +31,12 @@ class InvestmentListeners {
 
     private final InvestmentService investments;
     private final MoneyMovements money;
-    private final Executions executions;
+    private final TradingDesk trading;
 
-    InvestmentListeners(InvestmentService investments, MoneyMovements money, Executions executions) {
+    InvestmentListeners(InvestmentService investments, MoneyMovements money, TradingDesk trading) {
         this.investments = investments;
         this.money = money;
-        this.executions = executions;
+        this.trading = trading;
     }
 
     @KafkaListener(topics = "${investments.topics.commands}")
@@ -68,7 +68,7 @@ class InvestmentListeners {
         }
         money.accountUnblocked(WireValues.id(event.getEventId(), "event_id", WireFormat.MAX_MESSAGE_ID_LENGTH),
                 WireValues.uuid(event.getAccountId(), "account_id"),
-                WireValues.instant(event.hasOccurredAt() ? event.getOccurredAt() : null, "occurred_at"));
+                WireFormat.occurredAt(event.hasOccurredAt(), event.getOccurredAt()));
     }
 
     @KafkaListener(topics = "${investments.topics.broker-executions}")
@@ -78,6 +78,6 @@ class InvestmentListeners {
             log.debug("Ignoring a broker report of a newer type");
             return;
         }
-        executions.apply(report);
+        trading.apply(report);
     }
 }

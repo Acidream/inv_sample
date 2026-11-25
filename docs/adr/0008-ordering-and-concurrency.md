@@ -1,6 +1,6 @@
 # 0008 – Ordering by partition key, safety by optimistic locking
 
-Date: 2026-11-22 · Status: Accepted
+Date: 2026-11-22 · Status: Accepted · Investments and the FIX gateway lock rows instead: [0026](0026-investment-service.md), [0027](0027-fix-gateway.md)
 
 ## Context
 

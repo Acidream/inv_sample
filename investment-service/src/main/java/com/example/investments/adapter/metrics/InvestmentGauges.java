@@ -1,6 +1,6 @@
 package com.example.investments.adapter.metrics;
 
-import com.example.investments.application.InvestmentService;
+import com.example.investments.application.OverdueWatch;
 import com.example.investments.config.InvestmentProperties;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -21,14 +21,14 @@ import org.springframework.stereotype.Component;
 @Component
 class InvestmentGauges {
 
-    InvestmentGauges(InvestmentService investments, Clock clock, InvestmentProperties properties,
+    InvestmentGauges(OverdueWatch watch, Clock clock, InvestmentProperties properties,
             MeterRegistry registry) {
         Gauge.builder("investments.orders.overdue",
-                        () -> investments.countOverdueOrders(clock.instant().minus(properties.overdueAfter())))
+                        () -> watch.countOverdueOrders(clock.instant().minus(properties.overdueAfter())))
                 .description("Orders still with the broker after their trading day ended")
                 .register(registry);
         Gauge.builder("investments.payouts.unpaid.overdue",
-                        () -> investments.countUnpaidPayoutsSince(clock.instant().minus(properties.unpaidAlertAfter())))
+                        () -> watch.countUnpaidPayoutsSince(clock.instant().minus(properties.unpaidAlertAfter())))
                 .description("Payouts unpaid for longer than investments.unpaid-alert-after")
                 .register(registry);
     }

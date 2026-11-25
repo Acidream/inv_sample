@@ -16,11 +16,14 @@ import com.google.protobuf.Timestamp;
 import com.google.protobuf.util.JsonFormat;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Map;
 import java.util.UUID;
+import javax.sql.DataSource;
 import org.springframework.context.ApplicationContext;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -161,6 +164,90 @@ public final class TestHooks {
 
     public static boolean brokerLoggedOn() {
         return broker().isLoggedOn();
+    }
+
+    /** Waits until the broker sees the gateway logged on, or not; false if it didn't happen in time. */
+    public static boolean awaitBrokerLoggedOn(boolean loggedOn, int millis) throws InterruptedException {
+        var deadline = System.nanoTime() + millis * 1_000_000L;
+        while (System.nanoTime() < deadline) {
+            if (broker().isLoggedOn() == loggedOn) {
+                return true;
+            }
+            Thread.sleep(50);
+        }
+        return broker().isLoggedOn() == loggedOn;
+    }
+
+    // --- a second instance, competing for the session lock (ADR 0027) ------------------------------
+
+    /** The advisory lock key the gateway's instances compete for, {@code FixSession.LOCK_KEY}. */
+    private static final long SESSION_LOCK = 0x46495853L;
+    private static volatile Connection rival;
+
+    /**
+     * Plays a second instance taking the session over: the connection that holds the gateway's lock is
+     * cut, as a network failure would, and the rival takes the lock as soon as Postgres frees it.
+     */
+    public static void anotherInstanceTakesTheLock() throws SQLException, InterruptedException {
+        var dataSource = context.getBean(DataSource.class);
+        var connection = dataSource.getConnection();
+        connection.setAutoCommit(true);
+        try (var cut = connection.prepareStatement("""
+                select pg_terminate_backend(pid) from pg_locks
+                where locktype = 'advisory' and granted and classid::bigint = ? and objid::bigint = ?""")) {
+            cut.setLong(1, SESSION_LOCK >>> 32);
+            cut.setLong(2, SESSION_LOCK & 0xFFFFFFFFL);
+            cut.execute();
+        }
+        var deadline = System.nanoTime() + 5_000_000_000L;
+        while (System.nanoTime() < deadline) {
+            try (var take = connection.prepareStatement("select pg_try_advisory_lock(?)")) {
+                take.setLong(1, SESSION_LOCK);
+                try (var result = take.executeQuery()) {
+                    if (result.next() && result.getBoolean(1)) {
+                        rival = connection;
+                        return;
+                    }
+                }
+            }
+            Thread.sleep(10);
+        }
+        connection.close();
+        throw new IllegalStateException("The rival could not take the session lock");
+    }
+
+    /**
+     * Plays a crash between marking an order {@code SENDING} and handing it to the session: waits for
+     * the gateway to store the order, then leaves it {@code SENDING} without it reaching the broker.
+     */
+    public static void crashedWhileSending(String orderId) throws SQLException, InterruptedException {
+        var dataSource = context.getBean(DataSource.class);
+        var deadline = System.nanoTime() + 10_000_000_000L;
+        try (var connection = dataSource.getConnection();
+                var mark = connection.prepareStatement(
+                        "update broker_order set status = 'SENDING' where order_id = ? and status = 'RECEIVED'")) {
+            mark.setString(1, orderId);
+            while (System.nanoTime() < deadline) {
+                if (mark.executeUpdate() == 1) {
+                    return;
+                }
+                Thread.sleep(50);
+            }
+        }
+        throw new IllegalStateException("Order " + orderId + " was never stored as RECEIVED");
+    }
+
+    /** The rival instance stops: its lock is released and the gateway may take the session back. */
+    public static void otherInstanceStops() throws SQLException {
+        var connection = rival;
+        rival = null;
+        if (connection != null) {
+            try (var unlock = connection.prepareStatement("select pg_advisory_unlock(?)")) {
+                unlock.setLong(1, SESSION_LOCK);
+                unlock.execute();
+            }
+            connection.close();
+        }
     }
 
     // --- helpers ----------------------------------------------------------------------------------

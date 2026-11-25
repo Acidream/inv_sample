@@ -39,7 +39,8 @@ class ArchitectureTest {
     @Test
     void serviceCode_ProductionClasses_KnowsNoOtherService() {
         noClasses().should().dependOnClassesThat()
-                .resideInAnyPackage("com.example.savings..", "com.example.transfers..", "com.example.currentaccount..")
+                .resideInAnyPackage("com.example.savings..", "com.example.transfers..", "com.example.currentaccount..",
+                        "com.example.fixgateway..", "com.example.simulator..")
                 .check(CLASSES);
     }
 

@@ -73,9 +73,9 @@ public final class Holding {
     /**
      * Sells reserved units, oldest lots first.
      *
-     * @param proceeds what the fill brought in
+     * @param proceeds what the fill brought in, maybe zero
      */
-    public Sale sold(Quantity units, Price price, Money proceeds) {
+    public Sale sold(Quantity units, Price price, BigDecimal proceeds) {
         if (units.exceeds(reserved)) {
             throw new IllegalStateException("Selling " + units + " of " + isin + " but only " + reserved
                     + " are reserved");
@@ -94,7 +94,7 @@ public final class Holding {
         }
         reserved = reserved.minus(units);
         lastPrice = price;
-        var realized = proceeds.amount().subtract(cost).setScale(Money.SCALE, RoundingMode.HALF_EVEN);
+        var realized = proceeds.subtract(cost).setScale(Money.SCALE, RoundingMode.HALF_EVEN);
         return new Sale(cost, realized);
     }
 

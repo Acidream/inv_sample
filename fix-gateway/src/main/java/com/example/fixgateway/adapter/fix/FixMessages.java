@@ -1,6 +1,6 @@
 package com.example.fixgateway.adapter.fix;
 
-import com.example.fixgateway.application.BrokerEvent;
+import com.example.fixgateway.application.BrokerReport;
 import com.example.fixgateway.domain.BrokerOrder;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -68,20 +68,23 @@ final class FixMessages {
         return message;
     }
 
-    /** @return empty for a report the gateway has no use for (e.g. a trade correction, a status of a new order) */
-    static Optional<BrokerEvent> event(ExecutionReport report) throws FieldNotFound {
+    /**
+     * @param now stands in for a fill's trade time if the broker didn't send {@code TransactTime}
+     * @return empty for a report the gateway has no use for (e.g. a trade correction, a status of a new order)
+     */
+    static Optional<BrokerReport> event(ExecutionReport report, Instant now) throws FieldNotFound {
         var orderId = report.getClOrdID().getValue();
         var ordStatus = report.getOrdStatus().getValue();
-        BrokerEvent event = switch (report.getExecType().getValue()) {
-            case ExecType.NEW -> new BrokerEvent.Accepted(orderId);
-            case ExecType.TRADE, ExecType.PARTIAL_FILL, ExecType.FILL -> new BrokerEvent.Filled(orderId,
+        BrokerReport event = switch (report.getExecType().getValue()) {
+            case ExecType.NEW -> new BrokerReport.Accepted(orderId);
+            case ExecType.TRADE, ExecType.PARTIAL_FILL, ExecType.FILL -> new BrokerReport.Filled(orderId,
                     report.getExecID().getValue(), decimal(report.getString(LastQty.FIELD)),
-                    decimal(report.getString(LastPx.FIELD)), ordStatus == OrdStatus.FILLED, tradedAt(report));
-            case ExecType.REJECTED -> new BrokerEvent.Rejected(orderId, text(report),
+                    decimal(report.getString(LastPx.FIELD)), ordStatus == OrdStatus.FILLED, tradedAt(report, now));
+            case ExecType.REJECTED -> new BrokerReport.Rejected(orderId, text(report),
                     rejectReason(report) == OrdRejReason.DUPLICATE_ORDER);
-            case ExecType.EXPIRED -> new BrokerEvent.Expired(orderId);
-            case ExecType.CANCELED -> new BrokerEvent.Cancelled(orderId, text(report));
-            case ExecType.ORDER_STATUS -> new BrokerEvent.Status(orderId,
+            case ExecType.EXPIRED -> new BrokerReport.Expired(orderId);
+            case ExecType.CANCELED -> new BrokerReport.Cancelled(orderId, text(report));
+            case ExecType.ORDER_STATUS -> new BrokerReport.Status(orderId,
                     !(ordStatus == OrdStatus.REJECTED && rejectReason(report) == OrdRejReason.UNKNOWN_ORDER));
             default -> null;
         };
@@ -98,10 +101,8 @@ final class FixMessages {
         return number.scale() < 0 ? number.setScale(0) : number;
     }
 
-    private static Instant tradedAt(ExecutionReport report) throws FieldNotFound {
-        return report.isSetTransactTime()
-                ? report.getTransactTime().getValue().toInstant(ZoneOffset.UTC)
-                : Instant.now();
+    private static Instant tradedAt(ExecutionReport report, Instant now) throws FieldNotFound {
+        return report.isSetTransactTime() ? report.getTransactTime().getValue().toInstant(ZoneOffset.UTC) : now;
     }
 
     private static int rejectReason(ExecutionReport report) throws FieldNotFound {

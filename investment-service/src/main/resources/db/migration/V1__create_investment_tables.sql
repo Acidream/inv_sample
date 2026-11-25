@@ -54,13 +54,14 @@ create table investment_order (
     settlement       varchar(10)    not null check (settlement in ('PENDING', 'SETTLED', 'UNPAID')),
     trading_day      date,
     filled_quantity  numeric(24, 6) not null check (filled_quantity >= 0),
-    filled_amount    numeric(19, 2) not null check (filled_amount >= 0),
+    -- What the fills cost exactly (quantity x price); the money that moved is this rounded to the cent.
+    filled_value     numeric(31, 10) not null check (filled_value >= 0),
     rejection_reason varchar(300),
     accepted_at      timestamptz    not null,
     check ((side = 'BUY') = (amount is not null)),
     check ((side = 'SELL') = (quantity is not null)),
     check (side = 'BUY' or filled_quantity <= quantity),
-    check (side = 'SELL' or filled_amount <= amount)
+    check (side = 'SELL' or filled_value <= amount)
 );
 
 create index investment_order_portfolio_idx on investment_order (portfolio_id, accepted_at desc);
@@ -74,7 +75,8 @@ create table order_fill (
     seq           bigserial,
     quantity      numeric(24, 6) not null check (quantity > 0),
     price         numeric(19, 4) not null check (price > 0),
-    amount        numeric(19, 2) not null check (amount > 0),
+    -- What the order's rounded total grew by: zero for a fill worth less than a cent.
+    amount        numeric(19, 2) not null check (amount >= 0),
     realized_gain numeric(19, 2),
     traded_at     timestamptz    not null,
     primary key (order_id, exec_id)

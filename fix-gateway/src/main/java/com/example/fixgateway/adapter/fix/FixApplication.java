@@ -42,15 +42,19 @@ class FixApplication extends ApplicationAdapter implements DisposableBean {
         this.clock = clock;
     }
 
-    /** Not on QuickFIX/J's thread: the status requests go out through the session it is running. */
+    /**
+     * Not on QuickFIX/J's thread: the status requests go out through the session it is running. If
+     * they fail, the dispatcher asks again before its next send.
+     */
     @Override
     public void onLogon(SessionID sessionId) {
         log.info("FIX session {} logged on", sessionId);
+        dispatcher.getObject().sessionChanged();
         afterLogon.submit(() -> {
             try {
                 dispatcher.getObject().recover();
             } catch (RuntimeException e) {
-                log.error("Recovery after logon failed", e);
+                log.error("Recovery after logon failed; trying again before the next send", e);
             }
         });
     }
@@ -58,6 +62,7 @@ class FixApplication extends ApplicationAdapter implements DisposableBean {
     @Override
     public void onLogout(SessionID sessionId) {
         log.warn("FIX session {} logged out", sessionId);
+        dispatcher.getObject().sessionChanged();
     }
 
     @Override
@@ -70,7 +75,7 @@ class FixApplication extends ApplicationAdapter implements DisposableBean {
             log.warn("Ignoring an execution report without ClOrdID: {}", message);
             return;
         }
-        var event = FixMessages.event(report);
+        var event = FixMessages.event(report, clock.instant());
         if (event.isEmpty()) {
             log.debug("Ignoring execution report {}", message);
             return;

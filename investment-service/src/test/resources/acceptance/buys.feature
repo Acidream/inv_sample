@@ -61,6 +61,36 @@ Feature: Buying by amount, money first (ADR 0026)
     * match fill contains { type: 'BUY_FILL', reference: '#(bought.orderId + ":x1")' }
     * match fill.lines == [{ bookAccount: '#("customer:" + portfolioId)', side: 'DEBIT', amount: '100.00' }, { bookAccount: 'broker-settlement', side: 'CREDIT', amount: '100.00' }]
 
+  Scenario: a buy filled in full for less than its money refunds what it didn't spend
+    * def bought = call read('common.feature@buy') { portfolioId: '#(portfolioId)', currentAccount: '#(currentAccount)', isin: 'IE00B4L5Y983', amount: '500.00' }
+    * def orderId = bought.orderId
+    # 5.208333 x 95.90 = 499.4791347, rounded half-even to 499.48: 0.52 was not spent.
+    * hooks.brokerFilled(orderId, 'f1', '5.208333', '95.9000', true)
+    * def refund = hooks.awaitTransferRequest(portfolioId, currentAccount)
+    * match refund.amount == { amount: '0.52', currency: 'EUR' }
+    Given path 'orders', orderId
+    When method get
+    Then match response contains { status: 'FILLED', settlement: 'PENDING', filledAmount: '499.48' }
+    * def answer = hooks.payOut(portfolioId, refund.transferId, '0.52')
+    * match answer.type == 'MONEY_WITHDRAWN'
+    Given path 'orders', orderId
+    And retry until response.settlement == 'SETTLED'
+    When method get
+
+  Scenario: a fill worth less than a cent adds its units and moves no money
+    * def bought = call read('common.feature@buy') { portfolioId: '#(portfolioId)', currentAccount: '#(currentAccount)', isin: 'IE00B4L5Y983', amount: '100.00' }
+    * def orderId = bought.orderId
+    * hooks.brokerFilled(orderId, 't1', '0.000001', '96.0000', false)
+    * hooks.brokerFilled(orderId, 't2', '1', '96.0000', true)
+    Given path 'orders', orderId
+    And retry until response.status == 'FILLED'
+    When method get
+    Then match response contains { filledQuantity: '1.000001', filledAmount: '96.00' }
+    And match response.fills[*].amount == ['0.00', '96.00']
+    Given path 'portfolios', portfolioId, 'transactions'
+    When method get
+    Then match response.transactions[*].type == ['BUY', 'FUNDING']
+
   Scenario: what a partly filled buy didn't spend is refunded to the current account when it expires
     * def bought = call read('common.feature@buy') { portfolioId: '#(portfolioId)', currentAccount: '#(currentAccount)', isin: 'IE00B5BMR087', amount: '1000.00' }
     * def orderId = bought.orderId
@@ -171,6 +201,21 @@ Feature: Buying by amount, money first (ADR 0026)
     * match deposited.type == 'MONEY_DEPOSITED'
     * def back = hooks.awaitTransferRequest(portfolioId, currentAccount)
     * match back.amount.amount == '42.00'
+
+  Scenario: a funding that brings another amount than ordered goes back, and the order fails
+    Given path 'orders'
+    And header Idempotency-Key = hooks.uuid()
+    And request { portfolioId: '#(portfolioId)', isin: 'IE00B4L5Y983', side: 'BUY', amount: '40.00' }
+    When method post
+    * def orderId = response.orderId
+    * def funding = hooks.awaitTransferRequest(currentAccount, portfolioId)
+    * hooks.deposit(portfolioId, funding.transferId, '41.00')
+    * def back = hooks.awaitTransferRequest(portfolioId, currentAccount)
+    * match back.amount.amount == '41.00'
+    Given path 'orders', orderId
+    And retry until response.status == 'FUNDING_FAILED'
+    When method get
+    Then match response contains { rejectionReason: 'funding brought another amount than ordered', fills: [] }
 
   Scenario: an instruction sent again is answered once
     * def bought = call read('common.feature@buy') { portfolioId: '#(portfolioId)', currentAccount: '#(currentAccount)', isin: 'IE00B4L5Y983', amount: '30.00' }

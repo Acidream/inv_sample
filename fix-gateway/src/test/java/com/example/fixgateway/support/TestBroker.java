@@ -177,8 +177,9 @@ public class TestBroker extends ApplicationAdapter implements DisposableBean {
         return found != null && found.isLoggedOn();
     }
 
+    /** An order the broker never received, or was told to forget, is unknown to it. */
     private void answerStatus(String orderId) {
-        if (forgotten.contains(orderId)) {
+        if (forgotten.contains(orderId) || !sides.containsKey(orderId)) {
             var report = report(orderId, ExecType.ORDER_STATUS, OrdStatus.REJECTED);
             report.set(new OrdRejReason(OrdRejReason.UNKNOWN_ORDER));
             send(report);

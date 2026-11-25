@@ -71,7 +71,7 @@ public class GatewayService {
      */
     @Transactional
     public Optional<BrokerOrder> startSending(String orderId, Instant now) {
-        var order = orders.lock(orderId).filter(found -> found.status() == BrokerOrder.Status.RECEIVED);
+        var order = lockIf(orderId, BrokerOrder.Status.RECEIVED);
         if (order.isEmpty()) {
             return Optional.empty();
         }
@@ -86,7 +86,7 @@ public class GatewayService {
 
     @Transactional
     public void sent(String orderId) {
-        orders.lock(orderId).filter(order -> order.status() == BrokerOrder.Status.SENDING).ifPresent(order -> {
+        lockIf(orderId, BrokerOrder.Status.SENDING).ifPresent(order -> {
             order.sent();
             orders.update(order);
         });
@@ -97,13 +97,18 @@ public class GatewayService {
     public int expireUnsent(Instant now, int limit) {
         int expired = 0;
         for (var orderId : orders.waitingToBeSent(limit)) {
-            var order = orders.lock(orderId).filter(found -> found.status() == BrokerOrder.Status.RECEIVED);
+            var order = lockIf(orderId, BrokerOrder.Status.RECEIVED);
             if (order.isPresent() && order.get().tradingDayEndedAt(now)) {
                 expireUnsent(order.get(), now);
                 expired++;
             }
         }
         return expired;
+    }
+
+    /** Locks the order, if it exists and is still in the given status. */
+    private Optional<BrokerOrder> lockIf(String orderId, BrokerOrder.Status status) {
+        return orders.lock(orderId).filter(order -> order.status() == status);
     }
 
     private void expireUnsent(BrokerOrder order, Instant now) {
@@ -128,7 +133,7 @@ public class GatewayService {
 
     /** Applies one report from the broker and publishes what investments needs to hear of it. */
     @Transactional
-    public void report(BrokerEvent event, Instant at) {
+    public void report(BrokerReport event, Instant at) {
         var found = orders.lock(event.orderId());
         if (found.isEmpty()) {
             log.warn("Broker reported {} for unknown order {}; ignored", event.getClass().getSimpleName(),
@@ -137,22 +142,22 @@ public class GatewayService {
         }
         var order = found.get();
         switch (event) {
-            case BrokerEvent.Accepted accepted -> {
+            case BrokerReport.Accepted accepted -> {
                 if (order.accepted()) {
                     reports.accepted(order.orderId(), at);
                 }
             }
-            case BrokerEvent.Filled fill -> filled(order, fill, at);
-            case BrokerEvent.Rejected rejected -> rejected(order, rejected, at);
-            case BrokerEvent.Expired expired -> end(order, () -> reports.expired(order.orderId(), at));
-            case BrokerEvent.Cancelled cancelled -> end(order, () -> reports.rejected(order.orderId(),
+            case BrokerReport.Filled fill -> filled(order, fill, at);
+            case BrokerReport.Rejected rejected -> rejected(order, rejected, at);
+            case BrokerReport.Expired expired -> end(order, () -> reports.expired(order.orderId(), at));
+            case BrokerReport.Cancelled cancelled -> end(order, () -> reports.rejected(order.orderId(),
                     "cancelled by the broker" + (cancelled.reason().isBlank() ? "" : ": " + cancelled.reason()), at));
-            case BrokerEvent.Status status -> status(order, status, at);
+            case BrokerReport.Status status -> status(order, status, at);
         }
         orders.update(order);
     }
 
-    private void filled(BrokerOrder order, BrokerEvent.Filled fill, Instant at) {
+    private void filled(BrokerOrder order, BrokerReport.Filled fill, Instant at) {
         if (!executions.markReported(order.orderId(), fill.execId())) {
             log.info("Execution {} of order {} was reported before; skipping", fill.execId(), order.orderId());
             return;
@@ -162,14 +167,13 @@ public class GatewayService {
             log.error("Broker reported fill {} for order {}, which had ended", fill.execId(), order.orderId());
         }
         order.accepted();
-        reports.filled(order.orderId(), fill.execId(), fill.quantity(), fill.price(), fill.done(), fill.tradedAt(),
-                at);
+        reports.filled(fill, at);
         if (fill.done()) {
             order.done();
         }
     }
 
-    private void rejected(BrokerOrder order, BrokerEvent.Rejected rejected, Instant at) {
+    private void rejected(BrokerOrder order, BrokerReport.Rejected rejected, Instant at) {
         if (rejected.duplicate() && order.status().isWithBroker()) {
             // Sent again after a crash; the broker has the first one, which goes on as normal.
             log.info("Broker already has order {}; the duplicate was rejected", order.orderId());
@@ -183,7 +187,7 @@ public class GatewayService {
      * A status after a logon. An order whose sending was interrupted and that the broker doesn't know
      * never left: it is sent again. One the broker had and lost is rejected, so its money is freed.
      */
-    private void status(BrokerOrder order, BrokerEvent.Status status, Instant at) {
+    private void status(BrokerOrder order, BrokerReport.Status status, Instant at) {
         if (status.known()) {
             order.accepted();
             return;

@@ -1,12 +1,15 @@
 package com.example.investments.application;
 
 import com.example.investments.application.port.Orders;
-import com.example.investments.application.port.Outbound;
+import com.example.investments.application.port.Broker;
+import com.example.investments.application.port.InvestmentMetrics;
 import com.example.investments.application.port.Payouts;
+import com.example.investments.application.port.PortfolioEvents;
 import com.example.investments.application.port.Portfolios;
 import com.example.investments.application.port.ProcessedMessages;
 import com.example.investments.application.port.TransferAnswers;
 import com.example.investments.domain.CashEntry;
+import com.example.investments.domain.Money;
 import com.example.investments.domain.Order;
 import com.example.investments.domain.Payout;
 import com.example.investments.domain.Portfolio;
@@ -15,7 +18,10 @@ import com.example.investments.domain.TransferAnswer;
 import com.example.investments.domain.TransferAnswer.Kind;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -40,20 +46,25 @@ public class MoneyMovements {
     private final Payouts payouts;
     private final TransferAnswers answers;
     private final ProcessedMessages processed;
-    private final Outbound outbound;
+    private final PortfolioEvents events;
+    private final Broker broker;
     private final Books books;
     private final PayoutDesk desk;
+    private final InvestmentMetrics metrics;
 
     MoneyMovements(Portfolios portfolios, Orders orders, Payouts payouts, TransferAnswers answers,
-            ProcessedMessages processed, Outbound outbound, Books books, PayoutDesk desk) {
+            ProcessedMessages processed, PortfolioEvents events, Broker broker, Books books, PayoutDesk desk,
+            InvestmentMetrics metrics) {
         this.portfolios = portfolios;
         this.orders = orders;
         this.payouts = payouts;
         this.answers = answers;
         this.processed = processed;
-        this.outbound = outbound;
+        this.events = events;
+        this.broker = broker;
         this.books = books;
         this.desk = desk;
+        this.metrics = metrics;
     }
 
     // --- instructions from the transfer service ---------------------------------------------------
@@ -67,6 +78,7 @@ public class MoneyMovements {
     public void apply(Instruction instruction) {
         if (!processed.markProcessed("instruction:" + instruction.messageId())) {
             log.info("Skipping already processed instruction {}", instruction.messageId());
+            metrics.duplicateMessage();
             return;
         }
         var portfolio = portfolios.lock(instruction.portfolioId());
@@ -79,6 +91,7 @@ public class MoneyMovements {
             }
             log.info("Transfer {} was already answered; skipping message {}", instruction.transferId(),
                     instruction.messageId());
+            metrics.duplicateMessage();
             return;
         }
         if (portfolio.isEmpty()) {
@@ -103,24 +116,37 @@ public class MoneyMovements {
     private void deposit(Books.Ledger ledger, Instruction instruction) {
         var portfolio = ledger.portfolio();
         var at = instruction.issuedAt();
-        var order = Order.orderOfFundingTransfer(instruction.transferId())
+        var waiting = Order.orderOfFundingTransfer(instruction.transferId())
                 .flatMap(orders::find)
-                .filter(found -> found.request().portfolioId().equals(portfolio.id()))
-                .filter(found -> found.awaitsFunding(instruction.amount()));
-        ledger.credit(CashEntry.Type.FUNDING, instruction.amount(), instruction.transferId(),
-                order.map(Order::id).orElse(null), null, at);
+                .filter(found -> found.portfolioId().equals(portfolio.id()))
+                .filter(found -> found.status() == Order.Status.FUNDING);
+        var order = waiting.filter(found -> found.awaitsFunding(instruction.amount()));
+        ledger.book(CashEntry.Booking.funding(instruction.transferId(), instruction.amount(),
+                order.map(Order::id).orElse(null), at));
         if (order.isPresent()) {
             order.get().funded(TradingCalendar.tradingDayOf(at));
             orders.update(order.get());
-            outbound.placeWithBroker(order.get(), at);
+            broker.place(order.get(), at);
         } else {
             log.warn("Transfer {} brought {} to portfolio {} without an order waiting for it; paying it back",
                     instruction.transferId(), instruction.amount(), portfolio.id());
+            waiting.ifPresent(mismatched -> fundingDidNotMatch(mismatched, instruction.amount()));
             desk.payOut(portfolio, Payout.unexpectedDeposit(portfolio.id(), instruction.transferId(),
                     instruction.amount(), at), at);
         }
-        answer(new TransferAnswer(portfolio.id(), instruction.transferId(), Kind.DEPOSIT, instruction.amount(), null,
-                at));
+        answer(instruction.carriedOut(instruction.amount()));
+    }
+
+    /**
+     * The order's funding transfer brought another amount than the order asked for. That money goes
+     * back on its own; the order can't wait for a second funding under the same transfer id, so it ends.
+     */
+    private void fundingDidNotMatch(Order order, Money amount) {
+        log.warn("Order {} failed: its funding brought {} instead of {}", order.id(), amount,
+                order.request().amount());
+        order.fundingFailed(Order.FUNDING_MISMATCH);
+        orders.update(order);
+        metrics.orderEnded(order);
     }
 
     /** Money leaves only for a payout investments requested, under that payout's current transfer id. */
@@ -133,14 +159,12 @@ public class MoneyMovements {
         if (payout.isEmpty()) {
             log.warn("Rejecting withdrawal {} of {} from portfolio {}: {}", instruction.transferId(),
                     instruction.amount(), portfolio.id(), TransferAnswer.NOTHING_OWED);
-            answer(new TransferAnswer(portfolio.id(), instruction.transferId(), Kind.WITHDRAWAL, instruction.amount(),
-                    TransferAnswer.NOTHING_OWED, at));
+            answer(instruction.rejected(TransferAnswer.NOTHING_OWED));
             return;
         }
-        ledger.debit(CashEntry.Type.PAYOUT, instruction.amount(), instruction.transferId(),
-                payout.get().orderId().orElse(null), null, at);
-        answer(new TransferAnswer(portfolio.id(), instruction.transferId(), Kind.WITHDRAWAL, instruction.amount(),
-                null, at));
+        ledger.book(CashEntry.Booking.payout(instruction.transferId(), instruction.amount(),
+                payout.get().orderId().orElse(null), at));
+        answer(instruction.carriedOut(instruction.amount()));
     }
 
     /** The current account refused a payout: the money is back, and the payout becomes unpaid. */
@@ -151,15 +175,14 @@ public class MoneyMovements {
                 .orElseThrow(() -> new IllegalInstructionException("Transfer " + instruction.transferId()
                         + " is returned to portfolio " + portfolio.id() + " but never left it"));
         var orderId = payouts.findByTransfer(instruction.transferId()).flatMap(Payout::orderId).orElse(null);
-        ledger.credit(CashEntry.Type.PAYOUT_RETURN, withdrawal.amount(), instruction.transferId(), orderId, null,
-                instruction.issuedAt());
-        answer(new TransferAnswer(portfolio.id(), instruction.transferId(), Kind.RETURN, withdrawal.amount(), null,
+        ledger.book(CashEntry.Booking.payoutReturned(instruction.transferId(), withdrawal.amount(), orderId,
                 instruction.issuedAt()));
+        answer(instruction.carriedOut(withdrawal.amount()));
     }
 
     private void answer(TransferAnswer answer) {
         answers.add(answer);
-        outbound.answered(answer);
+        events.answered(answer);
     }
 
     // --- outcomes of the transfers investments requested ------------------------------------------
@@ -172,6 +195,7 @@ public class MoneyMovements {
             return;
         }
         if (!processed.markProcessed("transfer-event:" + outcome.messageId())) {
+            metrics.duplicateMessage();
             return;
         }
         if (funded.isPresent()) {
@@ -186,13 +210,12 @@ public class MoneyMovements {
         if (outcome.completed()) {
             return;
         }
-        var found = orders.find(orderId);
-        if (found.isEmpty()) {
+        var locked = underItsPortfoliosLock(() -> orders.find(orderId), Order::portfolioId);
+        if (locked.isEmpty()) {
             log.warn("Funding transfer {} failed for unknown order {}", outcome.transferId(), orderId);
             return;
         }
-        portfolios.lock(found.get().request().portfolioId());
-        var order = orders.find(orderId).orElseThrow();
+        var order = locked.get();
         if (order.status() != Order.Status.FUNDING) {
             log.warn("Funding transfer {} failed, but order {} is {}; ignored", outcome.transferId(), orderId,
                     order.status());
@@ -201,16 +224,17 @@ public class MoneyMovements {
         log.info("Order {} failed: its money didn't come ({})", orderId, outcome.explanation());
         order.fundingFailed(outcome.explanation());
         orders.update(order);
+        metrics.orderEnded(order);
     }
 
     private void payoutOutcome(TransferOutcome outcome) {
-        var found = payouts.findByTransfer(outcome.transferId());
-        if (found.isEmpty()) {
+        var locked = underItsPortfoliosLock(() -> payouts.findByTransfer(outcome.transferId()),
+                Payout::portfolioId);
+        if (locked.isEmpty()) {
             log.warn("Outcome of unknown payout transfer {}; ignored", outcome.transferId());
             return;
         }
-        portfolios.lock(found.get().portfolioId());
-        var payout = payouts.find(found.get().id()).orElseThrow();
+        var payout = locked.get();
         if (payout.status() != Payout.Status.REQUESTED || !payout.transferId().equals(outcome.transferId())) {
             log.warn("Outcome of payout transfer {} arrived, but payout {} is {}; ignored", outcome.transferId(),
                     payout.id(), payout.status());
@@ -230,6 +254,7 @@ public class MoneyMovements {
     @Transactional
     public void accountUnblocked(String messageId, UUID accountId, Instant at) {
         if (!processed.markProcessed("current-account:" + messageId)) {
+            metrics.duplicateMessage();
             return;
         }
         for (var payoutId : payouts.unpaidIds(accountId, Integer.MAX_VALUE)) {
@@ -255,5 +280,18 @@ public class MoneyMovements {
         log.info("Retrying payout {} of {} to {} (attempt {})", payout.id(), payout.amount(),
                 portfolio.referenceAccountId(), payout.attempt() + 1);
         desk.retry(portfolio, payout, at);
+    }
+
+    /**
+     * Reads what belongs to a portfolio, locks that portfolio, and reads it again under the lock:
+     * another message for the same portfolio may have changed it meanwhile.
+     */
+    private <T> Optional<T> underItsPortfoliosLock(Supplier<Optional<T>> read, Function<T, UUID> portfolioOf) {
+        var found = read.get();
+        if (found.isEmpty()) {
+            return found;
+        }
+        portfolios.lock(portfolioOf.apply(found.get()));
+        return read.get();
     }
 }

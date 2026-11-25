@@ -29,11 +29,11 @@ class OrderTest {
     void filled_PartlyThenExpired_RefundsWhatWasNotSpent() {
         var order = placedBuy("1000.00");
 
-        order.filled(Fill.of("e1", Quantity.of("1.5"), Price.of("500"), AT), false);
+        order.filled(new Execution("e1", Quantity.of("1.5"), Price.of("500"), AT), false);
         assertThat(order.status()).isEqualTo(Order.Status.PARTIALLY_FILLED);
         assertThat(order.expired()).isTrue();
 
-        assertThat(order.moneyToPayOut()).isEqualTo(new BigDecimal("250.00"));
+        assertThat(order.moneyToPayOut()).contains(Money.of("250.00"));
         assertThat(order.settlement()).isEqualTo(Order.Settlement.PENDING);
     }
 
@@ -41,7 +41,7 @@ class OrderTest {
     void filled_BeyondTheOrdersMoney_ThrowsIllegalExecution() {
         var order = placedBuy("100.00");
 
-        assertThatThrownBy(() -> order.filled(Fill.of("e1", Quantity.of("1"), Price.of("100.01"), AT), false))
+        assertThatThrownBy(() -> order.filled(new Execution("e1", Quantity.of("1"), Price.of("100.01"), AT), false))
                 .isInstanceOf(IllegalExecutionException.class);
         assertThat(order.filledAmount()).isEqualByComparingTo("0");
     }
@@ -51,7 +51,7 @@ class OrderTest {
         var order = placedBuy("100.00");
         order.expired();
 
-        assertThatThrownBy(() -> order.filled(Fill.of("e1", Quantity.of("1"), Price.of("1"), AT), true))
+        assertThatThrownBy(() -> order.filled(new Execution("e1", Quantity.of("1"), Price.of("1"), AT), true))
                 .isInstanceOf(IllegalExecutionException.class);
     }
 
@@ -69,9 +69,9 @@ class OrderTest {
                 Quantity.of("3"), AT);
         var order = Order.sell(request, DAY);
 
-        order.filled(Fill.of("s1", Quantity.of("3"), Price.of("160"), AT), true);
+        order.filled(new Execution("s1", Quantity.of("3"), Price.of("160"), AT), true);
 
-        assertThat(order.moneyToPayOut()).isEqualTo(new BigDecimal("480.00"));
+        assertThat(order.moneyToPayOut()).contains(Money.of("480.00"));
         assertThat(order.unsoldUnits()).isEqualTo(Quantity.ZERO);
     }
 
@@ -82,7 +82,7 @@ class OrderTest {
         order.fundingFailed("DEBIT_REJECTED");
 
         assertThat(order.settlement()).isEqualTo(Order.Settlement.SETTLED);
-        assertThat(order.moneyToPayOut()).isEqualByComparingTo("0");
+        assertThat(order.moneyToPayOut()).isEmpty();
     }
 
     @Test
@@ -91,10 +91,76 @@ class OrderTest {
     }
 
     @Test
-    void times_PriceTimesFractionalQuantity_RoundsHalfEvenToTheCent() {
-        assertThat(Price.of("96").times(Quantity.of("2.083333"))).isEqualTo(Money.of("200.00"));
-        assertThat(Price.of("0.5").times(Quantity.of("0.05"))).isEqualTo(Money.of("0.02"));
-        assertThat(Price.of("0.5").times(Quantity.of("0.07"))).isEqualTo(Money.of("0.04"));
+    void filled_FractionalQuantity_MovesTheValueRoundedHalfEvenToTheCent() {
+        var order = placedBuy("500.00");
+
+        var fill = order.filled(new Execution("e1", Quantity.of("2.083333"), Price.of("96"), AT), false);
+
+        assertThat(fill.amount()).isEqualTo(new BigDecimal("200.00"));
+        assertThat(order.filledValue()).isEqualByComparingTo("199.999968");
+    }
+
+    @Test
+    void filled_WorthLessThanACent_MovesNoMoneyButCountsItsUnits() {
+        var order = placedBuy("100.00");
+
+        var fill = order.filled(new Execution("e1", Quantity.of("0.000001"), Price.of("96"), AT), false);
+
+        assertThat(fill.amount()).isEqualByComparingTo("0");
+        assertThat(fill.movesMoney()).isFalse();
+        assertThat(order.filledQuantity()).isEqualTo(Quantity.of("0.000001"));
+        assertThat(order.status()).isEqualTo(Order.Status.PARTIALLY_FILLED);
+    }
+
+    @Test
+    void filled_FillsWhoseRoundedSumWouldExceedTheMoney_RoundTheOrdersTotalOnceAndStayWithin() {
+        // Alone, 33.335 rounds half-even to 33.34: rounded per fill, these would come to 100.01, a cent
+        // beyond the money. Their exact sum is 100.00, and that is what the order's total is.
+        var order = placedBuy("100.00");
+
+        var first = order.filled(new Execution("e1", Quantity.of("1"), Price.of("33.335"), AT), false);
+        var second = order.filled(new Execution("e2", Quantity.of("1"), Price.of("33.335"), AT), false);
+        var third = order.filled(new Execution("e3", Quantity.of("1"), Price.of("33.33"), AT), true);
+
+        assertThat(first.amount().add(second.amount()).add(third.amount()))
+                .isEqualByComparingTo(order.filledAmount());
+        assertThat(order.filledAmount()).isEqualByComparingTo("100.00");
+        assertThat(order.moneyToPayOut()).isEmpty();
+    }
+
+    @Test
+    void restore_FilledBeyondTheOrdersMoney_ThrowsIllegalArgument() {
+        var state = new Order.State(buyRequest("100.00"), Order.Status.FILLED, Order.Settlement.PENDING, DAY,
+                Quantity.of("1"), new BigDecimal("100.01"), null);
+
+        assertThatThrownBy(() -> Order.restore(state)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void restore_PlacedWithoutTradingDay_ThrowsIllegalArgument() {
+        var state = new Order.State(buyRequest("100.00"), Order.Status.PLACED, Order.Settlement.PENDING, null,
+                Quantity.ZERO, BigDecimal.ZERO, null);
+
+        assertThatThrownBy(() -> Order.restore(state)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void restore_SettledWhileStillTrading_ThrowsIllegalArgument() {
+        var state = new Order.State(buyRequest("100.00"), Order.Status.PARTIALLY_FILLED, Order.Settlement.SETTLED,
+                DAY, Quantity.of("1"), new BigDecimal("50"), null);
+
+        assertThatThrownBy(() -> Order.restore(state)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void restore_StateOfAnOrderThatWasFilled_RestoresTheSameOrder() {
+        var order = placedBuy("100.00");
+        order.filled(new Execution("e1", Quantity.of("1.5"), Price.of("60"), AT), true);
+
+        var restored = Order.restore(order.state());
+
+        assertThat(restored.state()).isEqualTo(order.state());
+        assertThat(restored.filledAmount()).isEqualByComparingTo("90.00");
     }
 
     @Test

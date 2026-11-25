@@ -13,12 +13,9 @@ import java.util.UUID;
 public record Posting(UUID portfolioId, CashEntry.Type type, String reference, LocalDate valueDate,
         List<Line> lines) {
 
-    public static final String TRANSFER_CLEARING = "transfer-clearing";
-    public static final String BROKER_SETTLEMENT = "broker-settlement";
-
     public enum Side { DEBIT, CREDIT }
 
-    public record Line(String bookAccount, Side side, Money amount) {
+    public record Line(BookAccount bookAccount, Side side, Money amount) {
         public Line {
             Objects.requireNonNull(bookAccount, "bookAccount");
             Objects.requireNonNull(side, "side");
@@ -32,11 +29,11 @@ public record Posting(UUID portfolioId, CashEntry.Type type, String reference, L
 
     /** The posting of one entry of a portfolio's money ledger. */
     public static Posting of(CashEntry entry) {
-        var customer = customer(entry.portfolioId());
+        var customer = BookAccount.customer(entry.portfolioId());
         var amount = entry.money();
         var counterpart = switch (entry.type()) {
-            case FUNDING, PAYOUT, PAYOUT_RETURN -> TRANSFER_CLEARING;
-            case BUY, SELL -> BROKER_SETTLEMENT;
+            case FUNDING, PAYOUT, PAYOUT_RETURN -> BookAccount.TRANSFER_CLEARING;
+            case BUY, SELL -> BookAccount.BROKER_SETTLEMENT;
         };
         // Money arriving on the portfolio is a liability to the customer: credit the customer.
         var lines = entry.type().isCredit()
@@ -44,9 +41,5 @@ public record Posting(UUID portfolioId, CashEntry.Type type, String reference, L
                 : List.of(new Line(customer, Side.DEBIT, amount), new Line(counterpart, Side.CREDIT, amount));
         return new Posting(entry.portfolioId(), entry.type(), entry.reference(),
                 TradingCalendar.businessDayOf(entry.bookedAt()), lines);
-    }
-
-    public static String customer(UUID portfolioId) {
-        return "customer:" + portfolioId;
     }
 }

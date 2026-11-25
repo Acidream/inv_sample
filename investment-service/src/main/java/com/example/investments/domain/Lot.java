@@ -31,8 +31,10 @@ public record Lot(Long id, String orderId, String execId, Quantity quantity, Qua
         }
     }
 
-    public static Lot bought(String orderId, String execId, Quantity quantity, Money cost, Instant at) {
-        return new Lot(null, orderId, execId, quantity, quantity, cost.amount(), at);
+    /** The units a buy fill added, at the money it moved: maybe zero, for a fill worth less than a cent. */
+    public static Lot bought(Fill fill, String orderId) {
+        return new Lot(null, orderId, fill.execId(), fill.quantity(), fill.quantity(), fill.amount(),
+                fill.tradedAt());
     }
 
     /** What taking {@code units} out of this lot takes of its cost; the whole rest when all is taken. */

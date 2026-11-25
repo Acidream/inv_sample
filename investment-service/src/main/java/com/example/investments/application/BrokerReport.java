@@ -1,7 +1,6 @@
 package com.example.investments.application;
 
-import com.example.investments.domain.Price;
-import com.example.investments.domain.Quantity;
+import com.example.investments.domain.Execution;
 import java.time.Instant;
 import java.util.Objects;
 
@@ -21,12 +20,11 @@ public sealed interface BrokerReport {
     record Accepted(String messageId, String orderId, Instant at) implements BrokerReport {
     }
 
-    record Filled(String messageId, String orderId, String execId, Quantity quantity, Price price, boolean done,
-            Instant at) implements BrokerReport {
+    /** {@code at} is when the gateway heard of it; the execution has the broker's own trade time. */
+    record Filled(String messageId, String orderId, Execution execution, boolean done, Instant at)
+            implements BrokerReport {
         public Filled {
-            Objects.requireNonNull(execId, "execId");
-            Objects.requireNonNull(quantity, "quantity");
-            Objects.requireNonNull(price, "price");
+            Objects.requireNonNull(execution, "execution");
         }
     }
 

@@ -33,8 +33,10 @@ investments and back is not a route: the customer goes through the current accou
 
 ## Consequences
 
-- The transfer service still knows nothing about products, orders or securities; a fourth product
-  ledger would be another topic and enum value, nothing more.
+- The transfer service still knows nothing about products, orders or securities. A fourth product
+  ledger would be another topic and enum value, plus the places that still pick a topic or a route
+  by ledger: the saga's product-ledger steps, the routes, the listener and the directory's ledger
+  check. No product rule.
 - `transfer.route` and `known_account.ledger` widen (`V4__investments_ledger.sql`).
 - Verified by `transfers.feature` (buy funding, a refused refund coming back, no savings-to-portfolio
   route) and `TransferTest`.

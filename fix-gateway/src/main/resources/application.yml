@@ -52,6 +52,7 @@ gateway:
     heartbeat-seconds: 30
     reconnect-interval: 5s
     leader-poll: 5s
+    takeover-delay: 10s
   dispatch-interval-ms: 200
   overdue-after: 1h
 # Outbox relay and retention: platform-messaging's defaults (platform.messaging.*).

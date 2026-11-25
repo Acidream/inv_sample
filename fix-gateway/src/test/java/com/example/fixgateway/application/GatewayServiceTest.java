@@ -42,7 +42,7 @@ class GatewayServiceTest {
     void report_UnknownAfterInterruptedSending_SendsItAgainWithoutTellingInvestments() {
         var order = order(BrokerOrder.Status.SENDING);
 
-        gateway.report(new BrokerEvent.Status("ord-1", false), NOW);
+        gateway.report(new BrokerReport.Status("ord-1", false), NOW);
 
         assertThat(order.status()).isEqualTo(BrokerOrder.Status.RECEIVED);
         verify(reports, never()).rejected(anyString(), anyString(), any());
@@ -52,7 +52,7 @@ class GatewayServiceTest {
     void report_UnknownAfterTheBrokerAcceptedIt_RejectsTheOrder() {
         var order = order(BrokerOrder.Status.ACCEPTED);
 
-        gateway.report(new BrokerEvent.Status("ord-1", false), NOW);
+        gateway.report(new BrokerReport.Status("ord-1", false), NOW);
 
         assertThat(order.isDone()).isTrue();
         verify(reports).rejected(eq("ord-1"), eq(GatewayService.UNKNOWN_AT_BROKER), any());
@@ -62,7 +62,7 @@ class GatewayServiceTest {
     void report_KnownAfterInterruptedSending_CountsAsArrived() {
         var order = order(BrokerOrder.Status.SENDING);
 
-        gateway.report(new BrokerEvent.Status("ord-1", true), NOW);
+        gateway.report(new BrokerReport.Status("ord-1", true), NOW);
 
         assertThat(order.status()).isEqualTo(BrokerOrder.Status.ACCEPTED);
     }
@@ -71,7 +71,7 @@ class GatewayServiceTest {
     void report_DuplicateRejectedWhileWithBroker_LeavesTheOrderOpen() {
         var order = order(BrokerOrder.Status.SENT);
 
-        gateway.report(new BrokerEvent.Rejected("ord-1", "duplicate", true), NOW);
+        gateway.report(new BrokerReport.Rejected("ord-1", "duplicate", true), NOW);
 
         assertThat(order.isDone()).isFalse();
         verify(reports, never()).rejected(anyString(), anyString(), any());
@@ -81,8 +81,8 @@ class GatewayServiceTest {
     void report_SecondFinalReport_IsIgnored() {
         order(BrokerOrder.Status.ACCEPTED);
 
-        gateway.report(new BrokerEvent.Expired("ord-1"), NOW);
-        gateway.report(new BrokerEvent.Rejected("ord-1", "late", false), NOW);
+        gateway.report(new BrokerReport.Expired("ord-1"), NOW);
+        gateway.report(new BrokerReport.Rejected("ord-1", "late", false), NOW);
 
         verify(reports).expired(eq("ord-1"), any());
         verify(reports, never()).rejected(anyString(), anyString(), any());

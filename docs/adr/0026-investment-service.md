@@ -1,6 +1,6 @@
 # 0026 – The investment service: portfolios, orders by amount, FIFO holdings
 
-Date: 2026-11-24 · Status: Accepted · Amends [0001](0001-scope-savings-only.md), [0018](0018-service-structure.md) · Broker connection: [0027](0027-fix-gateway.md) · Transfers: [0028](0028-investments-as-a-third-ledger.md)
+Date: 2026-11-24 · Status: Accepted · Amends [0001](0001-scope-savings-only.md), [0008](0008-ordering-and-concurrency.md) (portfolio lock), [0018](0018-service-structure.md) · Broker connection: [0027](0027-fix-gateway.md) · Transfers: [0028](0028-investments-as-a-third-ledger.md)
 
 ## Context
 
@@ -46,20 +46,23 @@ sequenceDiagram
     App->>I: POST /orders (BUY, IE00B4L5Y983, 500.00)
     I-->>T: TransferRequest inv-buy-{orderId} (current account → portfolio)
     T->>I: TransferFromCurrentAccount
+    Note over I: money booked → order PLACED
     I-->>T: MoneyDeposited
-    T-->>I: TransferCompleted → order PLACED
     I-->>G: PlaceOrder (cash amount 500.00)
+    T-->>I: TransferCompleted (nothing left to do)
     G-->>I: OrderFilled (qty, price) …
     G-->>I: OrderFilled / OrderExpired / OrderRejected
     opt money left over
-        I-->>T: TransferRequest inv-refund-{orderId} (portfolio → current account)
+        I-->>T: TransferRequest inv-payout-{payoutId}-1 (portfolio → current account)
     end
 ```
 
 - A **buy is sized by amount** ("€500 of this ETF"). The amount is pulled from the current account
   through the transfer service *before* the order is placed, so the bank never pre-finances a
   customer's order and a refused debit fails the order before anything was traded
-  (`FUNDING_FAILED`).
+  (`FUNDING_FAILED`). The order goes to the broker as soon as its money is booked on the portfolio,
+  not when `TransferCompleted` arrives: crediting the portfolio is the saga's last step and a
+  product ledger never refuses a credit (ADR 0028), so the money can't be taken back.
 - The broker fills a fractional quantity for at most that amount (`CashOrderQty`, ADR 0027). Whatever
   isn't spent (the order expired or was rejected, partly or wholly, or the fills cost less) is
   **refunded** to the reference account by a transfer the investment service requests.
@@ -71,18 +74,27 @@ sequenceDiagram
   money (ADR 0015's compensation) and it stays on the portfolio as an **unpaid payout**, visible in
   the API, never usable for buying. It is retried when the current account is unblocked and once a
   day; an alert fires when one is older than three days.
+- Money that arrives with no order waiting for it (another transfer to the portfolio, or a funding
+  whose amount doesn't match its order) is accepted, as a credit to a product ledger always is
+  (ADR 0028), and paid straight back as a payout of its own (`UNEXPECTED_DEPOSIT`), so it never rests
+  on the portfolio. A funding of another amount also ends its order as `FUNDING_FAILED`: the order
+  can't be funded again under the same transfer id.
 
 **An order's trading state and its money are tracked separately.**
 
 | Side | Trading status | Settlement |
 |---|---|---|
-| Buy | `RECEIVED` → `FUNDING` → `PLACED` → `PARTIALLY_FILLED` → `FILLED`, `EXPIRED` or `REJECTED`; or `FUNDING_FAILED` | `PENDING` until the refund (if any) is done, then `SETTLED`; `UNPAID` if the refund came back |
-| Sell | `RECEIVED` → `PLACED` → `PARTIALLY_FILLED` → `FILLED`, `EXPIRED` or `REJECTED`; or `REJECTED` at once (not enough free quantity, unknown portfolio) | `PENDING` until the proceeds are paid out, then `SETTLED`; `UNPAID` if the payout came back |
+| Buy | (`RECEIVED`) → `FUNDING` → `PLACED` → `PARTIALLY_FILLED` → `FILLED`, `EXPIRED` or `REJECTED`; or `FUNDING_FAILED` | `PENDING` until the refund (if any) is done, then `SETTLED`; `UNPAID` if the refund came back |
+| Sell | (`RECEIVED`) → `PLACED` → `PARTIALLY_FILLED` → `FILLED`, `EXPIRED` or `REJECTED`; or `REJECTED` at once (not enough free quantity, unknown portfolio) | `PENDING` until the proceeds are paid out, then `SETTLED`; `UNPAID` if the payout came back |
+
+`RECEIVED` is what `POST /orders` answers while the command is on the log (ADR 0019): the order
+doesn't exist yet, so it is not a status the order is stored with. Applying the command creates it
+`FUNDING` (a buy), `PLACED` (a sell) or `REJECTED`.
 
 An order is done when its trading status is final and its settlement is `SETTLED` or `UNPAID`.
 Customers can't cancel an order in this slice: it is filled, rejected or expires at the end of its
 trading day. The trading day is the Berlin business day the order was placed on; every weekday is
-one (no exchange holiday calendar yet).
+one (no exchange holiday calendar yet). An order placed on a weekend trades on the Monday after.
 
 **Holdings are lots, consumed FIFO.** Each buy fill adds a lot (quantity, cost, trade time) to the
 portfolio's holding in that instrument. A sell fill consumes lots oldest first and splits the lot it
@@ -91,14 +103,34 @@ recorded per fill. The holding shows quantity, cost basis (sum of the remaining 
 last fill price; there is no market data feed, so no market value.
 
 **Precision.** Quantities have 6 fraction digits, as the broker reports them; we never round a
-quantity. Prices have 4. A fill's amount is `quantity × price`, rounded half-even to the cent per
-fill, and that cent amount is what moves. A lot's remaining cost is kept with 10 fraction digits so
-partial sells don't drift; realised gains are rounded to the cent when booked. Minimum buy: €1.00.
+quantity. Prices have 4. An order's fills are summed exactly (`quantity × price`, 10 fraction digits),
+and that total is rounded half-even to the cent once, for the order: a fill's amount, the money it
+moves, is what the rounded total grew by. Rounding each fill on its own could take a buy a cent beyond
+its money when the broker's exact total is within it; rounded once, a buy's fills never cost more than
+it brought. A fill worth less than a cent (`0.000001 × 96.00`) moves no money: its units are added or
+sold, with a lot cost or proceeds of zero, and nothing is booked. A lot's remaining cost is kept with
+10 fraction digits so partial sells don't drift; realised gains are rounded to the cent when booked.
+Minimum buy: €1.00.
 
 **Idempotency, as elsewhere (ADR 0007).** The order id is derived from the `Idempotency-Key`
-(`ord-…`); the broker order id is the order id, the transfer ids are derived from it
-(`inv-buy-…`, `inv-refund-…`, `inv-payout-…`). Fills are applied once per execution id, transfer
-answers once per transfer id. A reused id with different content is dead-lettered.
+(`ord-…`); the broker order id is the order id, and a buy's funding is `inv-buy-<order id>`. Refunds
+and proceeds are payouts, one per order with an id derived from the order's, and each attempt to pay
+one is a transfer of its own, `inv-payout-<payout id>-<attempt>`: the transfer service applies a
+transfer id once and a refused one stays refused (ADR 0015), so a retry needs a new id. Fills are
+applied once per execution id, transfer answers once per transfer id. A reused id with different
+content is dead-lettered.
+
+**Concurrency: one lock per portfolio, not optimistic locking.** This amends ADR 0008 for the
+investment service. A portfolio's inputs arrive on five topics keyed differently (portfolio, order,
+transfer id, current account), so one portfolio's messages are consumed by several threads at once,
+and most of them change several rows together: an order, its fills, a holding and its lots, a
+payout, the money ledger. Every use case that changes a portfolio's state first locks the portfolio
+row (`select … for update`) and re-reads under the lock; the lock is held only for that one
+transaction, which never waits on the network (the outbox sends afterwards). Optimistic versions on
+each of those rows would make conflicts (a fill racing a transfer answer on the same portfolio)
+retries of whole messages for a gain nobody would notice: a portfolio sees a handful of messages per
+order. The database invariants of ADR 0008 point 3 stay: `cash >= 0`, `filled_value <= amount`, keys
+on execution id and transfer id.
 
 **Inputs and outputs.**
 
@@ -113,6 +145,12 @@ answers once per transfer id. A reused id with different content is dead-lettere
 | `payments.transfer-requests.v1` | out | buys' funding, refunds and payouts |
 | `broker.orders.v1` | out | `PlaceOrder` to the gateway |
 | `investments.postings.v1` | out | double-entry postings for Finance |
+
+**Business metrics** (ADR 0013), behind the port `InvestmentMetrics`: `investments_orders_received_total`
+and `investments_orders_ended_total` `{side, status}`, `investments_fills_total` and
+`investments_fills_amount_euros_total` `{side}`, `investments_payouts_requested_total` and its volume,
+`investments_payouts_refused_total{reason}` and `investments_messages_duplicate_total`; next to the
+gauges `investments.orders.overdue` and `investments.payouts.unpaid.overdue`, which have alerts.
 
 **Postings for Finance, money only.** Every money movement is published as a balanced posting, as
 savings does (ADR 0014): money in and out moves between `customer:<id>` and `transfer-clearing`;

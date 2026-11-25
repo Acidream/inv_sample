@@ -197,7 +197,7 @@ Checkstyle (`TestMethodName`) refuses any other name for a `@Test`, `@Parameteri
 ## Repository layout
 
 ```
-events-proto/               Protobuf contracts, one package per owning team: savings.v1, payments.v1, current_account.v1
+events-proto/               Protobuf contracts, one package per owning team: savings.v1, payments.v1, current_account.v1, investments.v1, broker.v1
 platform-messaging/         technical library: outbox and relay, idempotent consumer, retention, dead letters, wire checks
 savings-service/
   domain/                   Account, LedgerEntry, Posting, Money, Interest, SavingsProduct; order/ Order
@@ -213,8 +213,9 @@ current-account-service/
   application/              CurrentAccountService and its ports
   adapter/                  web · messaging (listeners, command log, outbox) · persistence (JDBC)
 investment-service/
-  domain/                   Portfolio, CashEntry, Order, Fill, Holding, Lot, Payout, Posting, Money, Quantity, Price
-  application/              InvestmentService, MoneyMovements, Executions and their ports
+  domain/                   Portfolio, CashEntry, Order, Execution, Fill, Holding, Lot, Payout, Posting, Instrument,
+                            TradingCalendar, TransferAnswer, TransferRequest, Money, Quantity, Price
+  application/              InvestmentService, MoneyMovements, TradingDesk, PayoutDesk, Books and their ports
   adapter/                  web · messaging · persistence (JDBC) · scheduling · metrics
 fix-gateway/
   domain/                   BrokerOrder

@@ -182,4 +182,16 @@
         </subpackage>
     </subpackage>
 
+    <!-- The execution simulator (ADR 0027) plays the broker over FIX only: it knows no service, no
+         contract and no shared library, so it can't come to depend on the gateway it talks to. -->
+    <subpackage name="simulator">
+        <disallow pkg="com.example.savings"/>
+        <disallow pkg="com.example.transfers"/>
+        <disallow pkg="com.example.currentaccount"/>
+        <disallow pkg="com.example.investments"/>
+        <disallow pkg="com.example.fixgateway"/>
+        <disallow pkg="com.example.events"/>
+        <disallow pkg="com.example.platform"/>
+    </subpackage>
+
 </import-control>

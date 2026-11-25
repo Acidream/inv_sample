@@ -24,9 +24,14 @@ import quickfix.SocketInitiator;
 /**
  * The one FIX session to the broker (ADR 0027). Only one instance may hold it: sequence numbers
  * belong to one connection. Each instance tries a Postgres advisory lock on a connection of its own;
- * the one that gets it starts the session and keeps it while that connection lives. If the
- * connection is lost, the session stops, and another instance can take over: the session's state
- * (sequence numbers, sent messages) is in the shared database, so it continues where it was.
+ * the one that gets it starts the session and keeps it while it still holds the lock, checked on
+ * that connection every {@code leader-poll}. If the check fails, the session stops, and another
+ * instance can take over: the session's state (sequence numbers, sent messages) is in the shared
+ * database, so it continues where it was.
+ *
+ * <p>Postgres frees the lock as soon as it sees the holder's connection end, which can be before the
+ * holder's next check. So a new holder waits {@code takeover-delay}, longer than a check takes to
+ * notice, before it logs on, and the two sessions never overlap.
  */
 @Component
 class FixSession implements Broker, SmartLifecycle {
@@ -123,10 +128,10 @@ class FixSession implements Broker, SmartLifecycle {
             try {
                 if (initiator == null) {
                     if (takeLock()) {
-                        startInitiator();
+                        takeOver();
                     }
-                } else if (!lockConnection.isValid(2)) {
-                    log.error("Lost the connection that holds the FIX session lock; stopping the session");
+                } else if (!holdsLock()) {
+                    log.error("No longer holds the FIX session lock; stopping the session");
                     release();
                 }
             } catch (SQLException | ConfigError | RuntimeException e) {
@@ -157,6 +162,43 @@ class FixSession implements Broker, SmartLifecycle {
         }
         connection.close();
         return false;
+    }
+
+    /** Gives a former holder time to notice it lost the lock, then starts the session if still the holder. */
+    private void takeOver() throws SQLException, ConfigError {
+        try {
+            Thread.sleep(config.takeoverDelay().toMillis());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            release();
+            return;
+        }
+        if (running && holdsLock()) {
+            startInitiator();
+        } else {
+            release();
+        }
+    }
+
+    /** Asks Postgres, on the lock's own connection, whether this session still holds the lock. */
+    private boolean holdsLock() {
+        var connection = lockConnection;
+        if (connection == null) {
+            return false;
+        }
+        try (var statement = connection.prepareStatement("""
+                select exists (select 1 from pg_locks where locktype = 'advisory' and granted
+                    and pid = pg_backend_pid() and classid::bigint = ? and objid::bigint = ? and objsubid = 1)""")) {
+            statement.setQueryTimeout((int) GatewayProperties.LOCK_CHECK_TIMEOUT.toSeconds());
+            statement.setLong(1, LOCK_KEY >>> 32);
+            statement.setLong(2, LOCK_KEY & 0xFFFFFFFFL);
+            try (var result = statement.executeQuery()) {
+                return result.next() && result.getBoolean(1);
+            }
+        } catch (SQLException e) {
+            log.warn("Checking the FIX session lock failed: {}", e.getMessage());
+            return false;
+        }
     }
 
     private void startInitiator() throws ConfigError {

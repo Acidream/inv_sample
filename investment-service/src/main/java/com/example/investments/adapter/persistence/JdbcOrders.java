@@ -18,7 +18,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Orders and their fills. Writers hold the portfolio's lock, so no optimistic version is needed. */
+/** Orders and their fills. Writers hold the portfolio's lock (ADR 0026), which serialises their changes. */
 @Component
 class JdbcOrders implements Orders {
 
@@ -41,9 +41,9 @@ class JdbcOrders implements Orders {
         var request = state.request();
         jdbc.sql("""
                 insert into investment_order (order_id, portfolio_id, isin, side, amount, quantity, status, settlement,
-                    trading_day, filled_quantity, filled_amount, rejection_reason, accepted_at)
+                    trading_day, filled_quantity, filled_value, rejection_reason, accepted_at)
                 values (:id, :portfolio, :isin, :side, :amount, :quantity, :status, :settlement, :tradingDay,
-                    :filledQuantity, :filledAmount, :reason, :acceptedAt)""")
+                    :filledQuantity, :filledValue, :reason, :acceptedAt)""")
                 .param("id", request.orderId())
                 .param("portfolio", request.portfolioId())
                 .param("isin", request.isin())
@@ -54,7 +54,7 @@ class JdbcOrders implements Orders {
                 .param("settlement", state.settlement().name())
                 .param("tradingDay", state.tradingDay())
                 .param("filledQuantity", state.filledQuantity().value())
-                .param("filledAmount", state.filledAmount())
+                .param("filledValue", state.filledValue())
                 .param("reason", state.rejectionReason())
                 .param("acceptedAt", request.acceptedAt().atOffset(ZoneOffset.UTC))
                 .update();
@@ -66,14 +66,14 @@ class JdbcOrders implements Orders {
         var state = order.state();
         jdbc.sql("""
                 update investment_order set status = :status, settlement = :settlement, trading_day = :tradingDay,
-                    filled_quantity = :filledQuantity, filled_amount = :filledAmount, rejection_reason = :reason
+                    filled_quantity = :filledQuantity, filled_value = :filledValue, rejection_reason = :reason
                 where order_id = :id""")
                 .param("id", order.id())
                 .param("status", state.status().name())
                 .param("settlement", state.settlement().name())
                 .param("tradingDay", state.tradingDay())
                 .param("filledQuantity", state.filledQuantity().value())
-                .param("filledAmount", state.filledAmount())
+                .param("filledValue", state.filledValue())
                 .param("reason", state.rejectionReason())
                 .update();
     }
@@ -95,7 +95,7 @@ class JdbcOrders implements Orders {
                 .param("exec", fill.execId())
                 .param("quantity", fill.quantity().value())
                 .param("price", fill.price().value())
-                .param("amount", fill.amount().amount())
+                .param("amount", fill.amount())
                 .param("gain", fill.realizedGain())
                 .param("tradedAt", fill.tradedAt().atOffset(ZoneOffset.UTC))
                 .update();
@@ -125,13 +125,13 @@ class JdbcOrders implements Orders {
                 row.getTimestamp("accepted_at").toInstant());
         return Order.restore(new Order.State(request, Order.Status.valueOf(row.getString("status")),
                 Order.Settlement.valueOf(row.getString("settlement")), row.getObject("trading_day", LocalDate.class),
-                new Quantity(row.getBigDecimal("filled_quantity")), row.getBigDecimal("filled_amount"),
+                new Quantity(row.getBigDecimal("filled_quantity")), row.getBigDecimal("filled_value"),
                 row.getString("rejection_reason")));
     }
 
     private static Fill mapFill(ResultSet row, int n) throws SQLException {
         return new Fill(row.getString("exec_id"), new Quantity(row.getBigDecimal("quantity")),
-                new Price(row.getBigDecimal("price")), new Money(row.getBigDecimal("amount")),
+                new Price(row.getBigDecimal("price")), row.getBigDecimal("amount"),
                 row.getBigDecimal("realized_gain"), row.getTimestamp("traded_at").toInstant());
     }
 }

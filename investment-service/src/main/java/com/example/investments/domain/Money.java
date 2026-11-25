@@ -29,11 +29,6 @@ public record Money(BigDecimal amount) implements Comparable<Money> {
         return new Money(new BigDecimal(amount));
     }
 
-    /** Rounds half-even to the cent, as a fill's amount is (ADR 0026). */
-    public static Money rounded(BigDecimal amount) {
-        return new Money(amount.setScale(SCALE, RoundingMode.HALF_EVEN));
-    }
-
     public boolean isLessThan(Money other) {
         return compareTo(other) < 0;
     }

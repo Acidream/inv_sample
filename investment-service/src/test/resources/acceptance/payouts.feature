@@ -73,3 +73,32 @@ Feature: Payouts the current account refuses (ADR 0026)
     * hooks.returnTransfer(portfolioId, never)
     * def cause = hooks.awaitDeadLetter('payments.investment-instructions.v1', portfolioId)
     * match cause == 'com.example.investments.application.IllegalInstructionException'
+
+  Scenario: a sale's proceeds the blocked current account refuses come back and are shown unpaid
+    * def isin = 'DE0007164600'
+    * call read('common.feature@holding') { portfolioId: '#(portfolioId)', currentAccount: '#(currentAccount)', isin: '#(isin)', amount: '200.00', quantity: '2', price: '100.0000' }
+    Given path 'orders'
+    And header Idempotency-Key = hooks.uuid()
+    And request { portfolioId: '#(portfolioId)', isin: '#(isin)', side: 'SELL', quantity: '2' }
+    When method post
+    Then status 202
+    * def sellId = response.orderId
+    * def placed = hooks.awaitBrokerOrder(sellId)
+    * hooks.brokerFilled(sellId, 's1', '2', '110.0000', true)
+    * def proceeds = hooks.awaitTransferRequest(portfolioId, currentAccount)
+    * match proceeds.amount.amount == '220.00'
+    * hooks.withdraw(portfolioId, proceeds.transferId, '220.00')
+    * def withdrawn = hooks.awaitPortfolioEvent(portfolioId)
+    * match withdrawn.type == 'MONEY_WITHDRAWN'
+    * hooks.returnTransfer(portfolioId, proceeds.transferId)
+    * def returned = hooks.awaitPortfolioEvent(portfolioId)
+    * match returned.type == 'WITHDRAWAL_RETURNED'
+    * hooks.transferFailed(proceeds.transferId, 'CREDIT_REFUSED', 'account blocked')
+
+    Given path 'orders', sellId
+    And retry until response.settlement == 'UNPAID'
+    When method get
+    Then match response contains { status: 'FILLED', filledAmount: '220.00' }
+    Given path 'portfolios', portfolioId
+    When method get
+    Then match response.unpaidPayouts contains { payoutId: '#uuid', orderId: '#(sellId)', reason: 'PROCEEDS', amount: '220.00', unpaidSince: '#string', attempts: 1 }

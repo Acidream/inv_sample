@@ -14,6 +14,7 @@ import org.springframework.context.annotation.Import;
     "platform.messaging.outbox.poll-interval-ms=50",
     "platform.messaging.retention.cron=-",
     "gateway.fix.leader-poll=200ms",
+    "gateway.fix.takeover-delay=2500ms",
     "gateway.fix.reconnect-interval=1s",
     "gateway.dispatch-interval-ms=50"
 })

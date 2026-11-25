@@ -12,7 +12,7 @@ Format: [Michael Nygard](https://cognitect.com/blog/2011/11/15/documenting-archi
 | [0005](0005-protobuf-event-contracts.md) | Kafka contracts: Protobuf envelope with `oneof`, keyed by account | Accepted |
 | [0006](0006-transactional-outbox.md) | Publish events through a transactional outbox | Accepted |
 | [0007](0007-idempotent-consumer-and-dead-letters.md) | Idempotent consumer, retries, dead-letter topic | Accepted |
-| [0008](0008-ordering-and-concurrency.md) | Ordering by partition key, safety by optimistic locking | Accepted |
+| [0008](0008-ordering-and-concurrency.md) | Ordering by partition key, safety by optimistic locking | Accepted; row locks in investments and the gateway (0026, 0027) |
 | [0009](0009-two-phase-withdrawals.md) | Two-phase withdrawals with holds, expiry and late confirmation | Superseded by 0015 |
 | [0010](0010-interest-accrual-and-payout.md) | Daily ACT/365 accrual from end-of-day balances, monthly payout | Accepted; payout frequency amended by 0017 |
 | [0011](0011-ledger-partitioning-and-keyset-pagination.md) | Monthly range partitions and keyset pagination for the ledger | Accepted |

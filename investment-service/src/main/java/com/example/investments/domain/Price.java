@@ -24,11 +24,6 @@ public record Price(BigDecimal value) {
         return new Price(new BigDecimal(value));
     }
 
-    /** What a quantity costs at this price, rounded half-even to the cent (ADR 0026). */
-    public Money times(Quantity quantity) {
-        return Money.rounded(value.multiply(quantity.value()));
-    }
-
     @Override
     public String toString() {
         return value.toPlainString();

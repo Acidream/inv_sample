@@ -144,7 +144,7 @@ class InvestmentController {
 
         static FillResponse from(Fill fill) {
             return new FillResponse(fill.execId(), fill.quantity().toString(), fill.price().toString(),
-                    fill.amount().toString(), fill.gain().map(BigDecimal::toPlainString).orElse(null),
+                    fill.amount().toPlainString(), fill.gain().map(BigDecimal::toPlainString).orElse(null),
                     fill.tradedAt());
         }
     }

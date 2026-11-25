@@ -1,12 +1,10 @@
 package com.example.investments.application;
 
-import com.example.investments.application.port.Outbound;
 import com.example.investments.application.port.Portfolios;
+import com.example.investments.application.port.PostingPublisher;
 import com.example.investments.domain.CashEntry;
-import com.example.investments.domain.Money;
 import com.example.investments.domain.Portfolio;
 import com.example.investments.domain.Posting;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.stereotype.Component;
@@ -19,11 +17,11 @@ import org.springframework.stereotype.Component;
 class Books {
 
     private final Portfolios portfolios;
-    private final Outbound outbound;
+    private final PostingPublisher postings;
 
-    Books(Portfolios portfolios, Outbound outbound) {
+    Books(Portfolios portfolios, PostingPublisher postings) {
         this.portfolios = portfolios;
-        this.outbound = outbound;
+        this.postings = postings;
     }
 
     /** Starts booking on a portfolio the caller has locked; {@link Ledger#save} stores what was booked. */
@@ -44,26 +42,17 @@ class Books {
             return portfolio;
         }
 
-        CashEntry credit(CashEntry.Type type, Money amount, String reference, String orderId, CashEntry.Trade trade,
-                Instant at) {
-            return posted(portfolio.credit(type, amount, reference, orderId, trade, at));
-        }
-
-        CashEntry debit(CashEntry.Type type, Money amount, String reference, String orderId, CashEntry.Trade trade,
-                Instant at) {
-            return posted(portfolio.debit(type, amount, reference, orderId, trade, at));
+        CashEntry book(CashEntry.Booking booking) {
+            var entry = portfolio.book(booking);
+            entries.add(entry);
+            postings.publish(Posting.of(entry), entry.bookedAt());
+            return entry;
         }
 
         void save() {
             if (!entries.isEmpty()) {
                 portfolios.update(portfolio, entries);
             }
-        }
-
-        private CashEntry posted(CashEntry entry) {
-            entries.add(entry);
-            outbound.posting(Posting.of(entry), entry.bookedAt());
-            return entry;
         }
     }
 }

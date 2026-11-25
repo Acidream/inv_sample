@@ -41,7 +41,7 @@ Feature: Orders over FIX 4.4, reports back on Kafka (ADR 0027)
     * def cause = hooks.awaitDeadLetter('broker.orders.v1', orderId)
     * match cause == 'com.example.fixgateway.application.OrderIdInUseException'
 
-  Scenario: a fill the broker sends again is reported once
+  Scenario: a fill the broker sends again with PossDupFlag is reported once
     * hooks.buy(orderId, 'IE00B4L5Y983', '100.00', today)
     * def nos = hooks.awaitFixOrder(orderId)
     * hooks.fixFilled(orderId, 'd1', '0.5', '100', false)

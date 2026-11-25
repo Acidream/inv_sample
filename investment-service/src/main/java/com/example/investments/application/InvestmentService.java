@@ -1,13 +1,16 @@
 package com.example.investments.application;
 
+import com.example.investments.application.port.Broker;
 import com.example.investments.application.port.CommandLog;
 import com.example.investments.application.port.Holdings;
 import com.example.investments.application.port.Instruments;
 import com.example.investments.application.port.Orders;
-import com.example.investments.application.port.Outbound;
+import com.example.investments.application.port.InvestmentMetrics;
 import com.example.investments.application.port.Payouts;
+import com.example.investments.application.port.PortfolioEvents;
 import com.example.investments.application.port.Portfolios;
 import com.example.investments.application.port.ProcessedMessages;
+import com.example.investments.application.port.TransferRequests;
 import com.example.investments.domain.CashEntry;
 import com.example.investments.domain.Fill;
 import com.example.investments.domain.Holding;
@@ -28,7 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Portfolios and orders as customers see them (ADR 0026): the REST intake appends to the command log,
  * the commands are applied when consumed, and the queries read what was applied. What the transfer
- * service and the broker answer is handled by {@link MoneyMovements} and {@link Executions}.
+ * service and the broker answer is handled by {@link MoneyMovements} and {@link TradingDesk}.
  */
 @Service
 public class InvestmentService {
@@ -41,19 +44,26 @@ public class InvestmentService {
     private final Payouts payouts;
     private final Instruments instruments;
     private final ProcessedMessages processed;
-    private final Outbound outbound;
+    private final PortfolioEvents events;
+    private final TransferRequests transfers;
+    private final Broker broker;
     private final CommandLog commandLog;
+    private final InvestmentMetrics metrics;
 
     public InvestmentService(Portfolios portfolios, Orders orders, Holdings holdings, Payouts payouts,
-            Instruments instruments, ProcessedMessages processed, Outbound outbound, CommandLog commandLog) {
+            Instruments instruments, ProcessedMessages processed, PortfolioEvents events, TransferRequests transfers,
+            Broker broker, CommandLog commandLog, InvestmentMetrics metrics) {
         this.portfolios = portfolios;
         this.orders = orders;
         this.holdings = holdings;
         this.payouts = payouts;
         this.instruments = instruments;
         this.processed = processed;
-        this.outbound = outbound;
+        this.events = events;
+        this.transfers = transfers;
+        this.broker = broker;
         this.commandLog = commandLog;
+        this.metrics = metrics;
     }
 
     // --- intake: accepts into the command log, changes nothing (ADR 0019) -------------------------
@@ -65,15 +75,11 @@ public class InvestmentService {
      * @throws PortfolioIdInUseException if the id belongs to a portfolio opened with different details
      */
     public Optional<Portfolio> submit(Command.OpenPortfolio open) {
-        var existing = portfolios.find(open.portfolioId());
-        if (existing.isPresent()) {
-            if (!existing.get().openedAs(open.customerId(), open.referenceAccountId())) {
-                throw new PortfolioIdInUseException(open.portfolioId());
-            }
-            return existing;
+        var existing = openedBefore(portfolios.find(open.portfolioId()), open);
+        if (existing.isEmpty()) {
+            commandLog.append(open);
         }
-        commandLog.append(open);
-        return Optional.empty();
+        return existing;
     }
 
     /**
@@ -82,11 +88,8 @@ public class InvestmentService {
      * @throws OrderIdInUseException     if the id belongs to a different order
      */
     public Optional<Order> submit(Command.PlaceOrder place) {
-        var existing = orders.find(place.request().orderId());
+        var existing = placedBefore(place.request());
         if (existing.isPresent()) {
-            if (!existing.get().request().sameOrderAs(place.request())) {
-                throw new OrderIdInUseException(place.request().orderId());
-            }
             return existing;
         }
         if (portfolios.find(place.portfolioId()).isEmpty()) {
@@ -106,6 +109,7 @@ public class InvestmentService {
     public void apply(String commandId, Command command) {
         if (!processed.markProcessed("command:" + commandId)) {
             log.info("Skipping already applied command {}", commandId);
+            metrics.duplicateMessage();
             return;
         }
         switch (command) {
@@ -115,28 +119,44 @@ public class InvestmentService {
     }
 
     private void open(Command.OpenPortfolio open) {
-        var existing = portfolios.lock(open.portfolioId());
-        if (existing.isPresent()) {
-            if (!existing.get().openedAs(open.customerId(), open.referenceAccountId())) {
-                throw new PortfolioIdInUseException(open.portfolioId());
-            }
+        if (openedBefore(portfolios.lock(open.portfolioId()), open).isPresent()) {
             log.info("Portfolio {} is already open; skipping the repeated opening", open.portfolioId());
             return;
         }
         var portfolio = Portfolio.open(open.portfolioId(), open.customerId(), open.referenceAccountId(),
                 open.acceptedAt());
         portfolios.add(portfolio);
-        outbound.portfolioOpened(portfolio);
+        events.opened(portfolio);
+    }
+
+    /**
+     * @return the portfolio, if it was opened before with these details
+     * @throws PortfolioIdInUseException if it was opened with others
+     */
+    private static Optional<Portfolio> openedBefore(Optional<Portfolio> existing, Command.OpenPortfolio open) {
+        if (existing.isPresent() && !existing.get().openedAs(open.customerId(), open.referenceAccountId())) {
+            throw new PortfolioIdInUseException(open.portfolioId());
+        }
+        return existing;
+    }
+
+    /**
+     * @return the order, if it was placed before as asked now
+     * @throws OrderIdInUseException if its id was used for a different order
+     */
+    private Optional<Order> placedBefore(Order.Request request) {
+        var existing = orders.find(request.orderId());
+        if (existing.isPresent() && !existing.get().request().sameOrderAs(request)) {
+            throw new OrderIdInUseException(request.orderId());
+        }
+        return existing;
     }
 
     private void place(Order.Request request) {
         var portfolio = portfolios.lock(request.portfolioId());
-        var earlier = orders.find(request.orderId());
-        if (earlier.isPresent()) {
-            if (!earlier.get().request().sameOrderAs(request)) {
-                throw new OrderIdInUseException(request.orderId());
-            }
+        if (placedBefore(request).isPresent()) {
             log.info("Order {} was already placed; skipping", request.orderId());
+            metrics.duplicateMessage();
             return;
         }
         if (portfolio.isEmpty()) {
@@ -163,8 +183,8 @@ public class InvestmentService {
         }
         var order = Order.buy(request);
         orders.add(order);
-        outbound.requestTransfer(Order.fundingTransferId(order.id()), portfolio.customerId(),
-                portfolio.referenceAccountId(), portfolio.id(), request.amount(), request.acceptedAt());
+        metrics.orderReceived(order);
+        transfers.request(portfolio.funding(order));
     }
 
     /** Reserves the units, so a second sell can't sell them too, and places the order at once. */
@@ -177,12 +197,15 @@ public class InvestmentService {
         holdings.save(holding);
         var order = Order.sell(request, TradingCalendar.tradingDayOf(request.acceptedAt()));
         orders.add(order);
-        outbound.placeWithBroker(order, request.acceptedAt());
+        metrics.orderReceived(order);
+        broker.place(order, request.acceptedAt());
     }
 
     private void reject(Order.Request request, String reason) {
         log.info("Order {} rejected: {}", request.orderId(), reason);
-        orders.add(Order.rejected(request, reason));
+        var order = Order.rejected(request, reason);
+        orders.add(order);
+        metrics.orderReceived(order);
     }
 
     // --- queries ----------------------------------------------------------------------------------
@@ -217,16 +240,5 @@ public class InvestmentService {
     @Transactional(readOnly = true)
     public List<Instrument> instrumentsOnSale(Instant at) {
         return instruments.all().stream().filter(instrument -> instrument.onSaleAt(at)).toList();
-    }
-
-    /** Orders still with the broker after their trading day ended (ADR 0027's alert). */
-    @Transactional(readOnly = true)
-    public long countOverdueOrders(Instant now) {
-        return orders.countTradingSince(TradingCalendar.businessDayOf(now));
-    }
-
-    @Transactional(readOnly = true)
-    public long countUnpaidPayoutsSince(Instant before) {
-        return payouts.countUnpaidSince(before);
     }
 }

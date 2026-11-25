@@ -1,6 +1,7 @@
 package com.example.investments.domain;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.EnumSet;
@@ -15,6 +16,10 @@ import java.util.UUID;
  * holding. Trading and money are tracked apart: the trading {@link Status} ends when the broker says
  * so, the {@link Settlement} when the money left over (a refund) or brought in (proceeds) has reached
  * the current account.
+ *
+ * <p>What an order's fills cost is summed exactly ({@code quantity × price}, 10 fraction digits) and
+ * rounded to the cent once, for the order: a fill's amount is what that rounded total grew by. So a
+ * buy never pays more than its money, and a fill too small to be worth a cent moves no money.
  *
  * <pre>
  * BUY:  FUNDING --&gt; PLACED --&gt; PARTIALLY_FILLED --&gt; FILLED | EXPIRED | REJECTED
@@ -38,6 +43,8 @@ public final class Order {
 
     private static final Set<Status> FINAL = EnumSet.of(Status.FILLED, Status.EXPIRED, Status.REJECTED,
             Status.FUNDING_FAILED);
+    /** Exact value of fills: quantity (6 fraction digits) times price (4). */
+    public static final int VALUE_SCALE = Quantity.SCALE + Price.SCALE;
 
     /** {@code PENDING} until the money is where it belongs; {@code UNPAID} if the current account refused it. */
     public enum Settlement { PENDING, SETTLED, UNPAID }
@@ -47,6 +54,7 @@ public final class Order {
     public static final String UNKNOWN_INSTRUMENT = "unknown instrument";
     public static final String NOT_ON_SALE = "instrument not on sale";
     public static final String NOT_ENOUGH_UNITS = "not enough free units";
+    public static final String FUNDING_MISMATCH = "funding brought another amount than ordered";
 
     private static final String FUNDING_PREFIX = "inv-buy-";
 
@@ -87,9 +95,13 @@ public final class Order {
         }
     }
 
-    /** Everything that is stored. */
+    /**
+     * Everything that is stored.
+     *
+     * @param filledValue what the fills cost exactly, {@link #VALUE_SCALE} fraction digits
+     */
     public record State(Request request, Status status, Settlement settlement, LocalDate tradingDay,
-            Quantity filledQuantity, BigDecimal filledAmount, String rejectionReason) {
+            Quantity filledQuantity, BigDecimal filledValue, String rejectionReason) {
     }
 
     private final Request request;
@@ -97,17 +109,61 @@ public final class Order {
     private Settlement settlement;
     private LocalDate tradingDay;
     private Quantity filledQuantity;
-    private BigDecimal filledAmount;
+    private BigDecimal filledValue;
     private String rejectionReason;
 
+    /** Creating and restoring check the same invariants (ADR 0016). */
     private Order(State state) {
         this.request = Objects.requireNonNull(state.request(), "request");
         this.status = Objects.requireNonNull(state.status(), "status");
         this.settlement = Objects.requireNonNull(state.settlement(), "settlement");
         this.tradingDay = state.tradingDay();
         this.filledQuantity = Objects.requireNonNull(state.filledQuantity(), "filledQuantity");
-        this.filledAmount = Objects.requireNonNull(state.filledAmount(), "filledAmount").setScale(Money.SCALE);
+        this.filledValue = Objects.requireNonNull(state.filledValue(), "filledValue")
+                .setScale(VALUE_SCALE, RoundingMode.UNNECESSARY);
         this.rejectionReason = state.rejectionReason();
+        checkInvariants();
+    }
+
+    /**
+     * Only a buy waits for money. An order has a trading day once it was placed, so not while funding,
+     * nor if its funding failed or it was refused at once; only a placed order can have fills. Settlement
+     * waits for trading to end. Fills never exceed what was ordered.
+     */
+    private void checkInvariants() {
+        var id = request.orderId();
+        boolean waitsForMoney = status == Status.FUNDING || status == Status.FUNDING_FAILED;
+        if (waitsForMoney && request.side() != Side.BUY) {
+            throw new IllegalArgumentException("Order " + id + ": only a buy can be " + status);
+        }
+        boolean placed = tradingDay != null;
+        if (waitsForMoney && placed || !waitsForMoney && status != Status.REJECTED && !placed) {
+            throw new IllegalArgumentException("Order " + id + " is " + status
+                    + (placed ? " but has trading day " + tradingDay : " without a trading day"));
+        }
+        if (!status.isFinal() && settlement != Settlement.PENDING) {
+            throw new IllegalArgumentException("Order " + id + " is " + status + " and can't be " + settlement);
+        }
+        if ((status == Status.REJECTED || status == Status.FUNDING_FAILED) != (rejectionReason != null)) {
+            throw new IllegalArgumentException("Order " + id + " is " + status
+                    + (rejectionReason == null ? " without a reason" : " with a rejection reason"));
+        }
+        if (filledValue.signum() < 0 || filledQuantity.isZero() != (filledValue.signum() == 0)) {
+            throw new IllegalArgumentException("Order " + id + " filled " + filledQuantity + " for " + filledValue);
+        }
+        boolean filling = status == Status.PARTIALLY_FILLED || status == Status.FILLED;
+        if (filling && filledQuantity.isZero() || (!placed || status == Status.PLACED) && filledQuantity.isPositive()) {
+            throw new IllegalArgumentException("Order " + id + " is " + status + " with " + filledQuantity
+                    + " filled");
+        }
+        if (request.side() == Side.BUY && filledValue.compareTo(request.amount().amount()) > 0) {
+            throw new IllegalArgumentException("Order " + id + " filled " + filledValue.toPlainString()
+                    + ", beyond its " + request.amount());
+        }
+        if (request.side() == Side.SELL && filledQuantity.exceeds(request.quantity())) {
+            throw new IllegalArgumentException("Order " + id + " filled " + filledQuantity + " units, beyond its "
+                    + request.quantity());
+        }
     }
 
     public static Order restore(State state) {
@@ -177,23 +233,26 @@ public final class Order {
      * ordered.
      *
      * @param done nothing more will be filled
+     * @return the fill, with the money it moves: what the order's rounded total grew by, maybe zero
      * @throws IllegalExecutionException if the fill contradicts the order
      */
-    public void filled(Fill fill, boolean done) {
+    public Fill filled(Execution execution, boolean done) {
         requireTrading("be filled");
-        var quantity = filledQuantity.plus(fill.quantity());
-        var amount = filledAmount.add(fill.amount().amount());
-        if (request.side() == Side.BUY && amount.compareTo(request.amount().amount()) > 0) {
-            throw new IllegalExecutionException("Fill " + fill.execId() + " takes order " + request.orderId()
-                    + " to " + amount + ", beyond its " + request.amount());
+        var units = filledQuantity.plus(execution.quantity());
+        var value = filledValue.add(execution.value());
+        if (request.side() == Side.BUY && value.compareTo(request.amount().amount()) > 0) {
+            throw new IllegalExecutionException("Fill " + execution.execId() + " takes order " + request.orderId()
+                    + " to " + value.stripTrailingZeros().toPlainString() + ", beyond its " + request.amount());
         }
-        if (request.side() == Side.SELL && quantity.exceeds(request.quantity())) {
-            throw new IllegalExecutionException("Fill " + fill.execId() + " takes order " + request.orderId()
-                    + " to " + quantity + " units, beyond its " + request.quantity());
+        if (request.side() == Side.SELL && units.exceeds(request.quantity())) {
+            throw new IllegalExecutionException("Fill " + execution.execId() + " takes order " + request.orderId()
+                    + " to " + units + " units, beyond its " + request.quantity());
         }
-        filledQuantity = quantity;
-        filledAmount = amount;
+        var amount = cents(value).subtract(filledAmount());
+        filledQuantity = units;
+        filledValue = value;
         status = done ? Status.FILLED : Status.PARTIALLY_FILLED;
+        return Fill.of(execution, amount);
     }
 
     /** @return false if the order had already expired (a report sent again) */
@@ -221,14 +280,20 @@ public final class Order {
 
     /**
      * What has to go to the current account once trading has ended: the unspent part of a buy's money,
-     * or a sell's proceeds. Zero if nothing.
+     * or a sell's proceeds. Empty if nothing.
      */
-    public BigDecimal moneyToPayOut() {
+    public Optional<Money> moneyToPayOut() {
         requireFinal("pay out");
         if (status == Status.FUNDING_FAILED) {
-            return BigDecimal.ZERO.setScale(Money.SCALE);
+            return Optional.empty();
         }
-        return request.side() == Side.BUY ? request.amount().amount().subtract(filledAmount) : filledAmount;
+        var money = request.side() == Side.BUY ? request.amount().amount().subtract(filledAmount()) : filledAmount();
+        return money.signum() == 0 ? Optional.empty() : Optional.of(new Money(money));
+    }
+
+    /** Why the money from {@link #moneyToPayOut} goes to the current account. */
+    public Payout.Reason payoutReason() {
+        return request.side() == Side.BUY ? Payout.Reason.REFUND : Payout.Reason.PROCEEDS;
     }
 
     /** Units a sell reserved and didn't sell, to release once trading has ended. */
@@ -279,12 +344,28 @@ public final class Order {
         }
     }
 
+    private static BigDecimal cents(BigDecimal value) {
+        return value.setScale(Money.SCALE, RoundingMode.HALF_EVEN);
+    }
+
     public State state() {
-        return new State(request, status, settlement, tradingDay, filledQuantity, filledAmount, rejectionReason);
+        return new State(request, status, settlement, tradingDay, filledQuantity, filledValue, rejectionReason);
     }
 
     public String id() {
         return request.orderId();
+    }
+
+    public UUID portfolioId() {
+        return request.portfolioId();
+    }
+
+    public String isin() {
+        return request.isin();
+    }
+
+    public Side side() {
+        return request.side();
     }
 
     public Request request() {
@@ -307,8 +388,14 @@ public final class Order {
         return filledQuantity;
     }
 
+    /** What the fills cost, rounded half-even to the cent: the money that moved. */
     public BigDecimal filledAmount() {
-        return filledAmount;
+        return cents(filledValue);
+    }
+
+    /** What the fills cost exactly. */
+    public BigDecimal filledValue() {
+        return filledValue;
     }
 
     public Optional<String> rejectionReason() {

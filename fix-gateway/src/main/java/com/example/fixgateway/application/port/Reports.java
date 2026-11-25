@@ -1,6 +1,6 @@
 package com.example.fixgateway.application.port;
 
-import java.math.BigDecimal;
+import com.example.fixgateway.application.BrokerReport;
 import java.time.Instant;
 
 /**
@@ -11,8 +11,7 @@ public interface Reports {
 
     void accepted(String orderId, Instant at);
 
-    void filled(String orderId, String execId, BigDecimal quantity, BigDecimal price, boolean done, Instant tradedAt,
-            Instant at);
+    void filled(BrokerReport.Filled fill, Instant at);
 
     void rejected(String orderId, String reason, Instant at);
 
