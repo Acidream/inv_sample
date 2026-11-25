@@ -5,7 +5,7 @@ Date: 2026-11-24 · Status: Accepted · Amends [0001](0001-scope-savings-only.md
 ## Context
 
 ADR 0001 left investments out as "a different aggregate (orders, holdings, FIFO cost basis)" for a
-separate service, and the big picture shows it as planned, with its own ledger, asking the transfer
+separate service, and the big picture showed it as planned, with its own ledger, asking the transfer
 service for money. Savings, transfers and current accounts now run end to end, so the question is
 how securities fit into the same platform without bending its rules.
 

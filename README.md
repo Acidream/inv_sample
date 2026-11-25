@@ -62,10 +62,12 @@ would change the design.
   `interest-expense`, `interest-payable`); Finance maps them to its chart of accounts and keeps the
   books. What Finance can reconcile against Savings: the customer lines of an account sum to that
   account's ledger balance ([0014](docs/adr/0014-double-entry-postings-for-finance.md)).
-  `transfer-clearing` is meant to net to zero per transfer *across* the two ledgers, but only
-  savings publishes postings so far: savings' own lines net to zero only for a withdrawal the
-  current account refused and savings got back. That check becomes possible once the current
-  account publishes its side ([0018](docs/adr/0018-service-structure.md),
+  Investments publishes its own postings the same way, with `broker-settlement` for money owed to
+  or by the broker for fills ([0026](docs/adr/0026-investment-service.md)).
+  `transfer-clearing` is meant to net to zero per transfer *across* the two ledgers, but the
+  current account publishes no postings yet: savings' and investments' own lines net to zero only
+  for money the current account refused and they got back. That check becomes possible once the
+  current account publishes its side ([0018](docs/adr/0018-service-structure.md),
   [0021](docs/adr/0021-current-account-service.md)). A full double-entry core inside
   Savings was considered and rejected as more than one product needs.
 - **The ledger is the system of record, not the Kafka log.** Replaying inputs is for recovery and
@@ -213,9 +215,9 @@ current-account-service/
   application/              CurrentAccountService and its ports
   adapter/                  web · messaging (listeners, command log, outbox) · persistence (JDBC)
 investment-service/
-  domain/                   Portfolio, CashEntry, Order, Execution, Fill, Holding, Lot, Payout, Posting, Instrument,
-                            TradingCalendar, TransferAnswer, TransferRequest, Money, Quantity, Price
-  application/              InvestmentService, MoneyMovements, TradingDesk, PayoutDesk, Books and their ports
+  domain/                   Portfolio, CashEntry, Order, Execution, Fill, Holding, Lot, Payout, Posting, BookAccount,
+                            Instrument, TradingCalendar, TransferAnswer, TransferRequest, Money, Quantity, Price
+  application/              InvestmentService, MoneyMovements, TradingDesk, PayoutDesk, Books, OverdueWatch and their ports
   adapter/                  web · messaging · persistence (JDBC) · scheduling · metrics
 fix-gateway/
   domain/                   BrokerOrder
@@ -252,14 +254,14 @@ Current accounts:
 Investments:
 
 - [portfolios.feature](investment-service/src/test/resources/acceptance/portfolios.feature): opening, idempotent `POST`, instruments on sale
-- [buys.feature](investment-service/src/test/resources/acceptance/buys.feature): money first, fills, refunds of what wasn't spent, funding failed, rejected and off-sale instruments, postings, duplicate fills, fills beyond the money → DLT, money nobody ordered paid back
+- [buys.feature](investment-service/src/test/resources/acceptance/buys.feature): money first, fills, refunds of what wasn't spent, funding failed, rejected and off-sale instruments, postings, duplicate fills, fills beyond the money → DLT, money nobody ordered or of another amount paid back
 - [sells.feature](investment-service/src/test/resources/acceptance/sells.feature): FIFO lots and realised gains, reserved units, expiry releasing units, selling off-sale instruments
 - [payouts.feature](investment-service/src/test/resources/acceptance/payouts.feature): a refused refund coming back unpaid, retried on unblocking and daily, withdrawals only for payouts asked for
 
 FIX gateway:
 
 - [orders.feature](fix-gateway/src/test/resources/acceptance/orders.feature): `NewOrderSingle` for buys and sells, reports in order, placed once, fills reported once, rejection, expiry, cancellation, duplicate rejections, expiry before sending
-- [session.feature](fix-gateway/src/test/resources/acceptance/session.feature): orders waiting while the session is down, status requests after a logon, an order the broker lost
+- [session.feature](fix-gateway/src/test/resources/acceptance/session.feature): orders waiting while the session is down, status requests after a logon, an order the broker lost, an order a crash left `SENDING`, one session per lock
 
 ## Running it locally
 
