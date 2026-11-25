@@ -226,8 +226,12 @@ public class InvestmentService {
 
     @Transactional(readOnly = true)
     public List<CashEntry> transactions(UUID portfolioId, Long beforeEntryNo, int limit) {
-        portfolios.find(portfolioId).orElseThrow(() -> new UnknownPortfolioException(portfolioId));
-        return portfolios.entries(portfolioId, beforeEntryNo, limit);
+        var entries = portfolios.entries(portfolioId, beforeEntryNo, limit);
+        if (entries.isEmpty()) {
+            // Only a page without entries needs to tell an empty ledger from an unknown portfolio.
+            portfolios.find(portfolioId).orElseThrow(() -> new UnknownPortfolioException(portfolioId));
+        }
+        return entries;
     }
 
     @Transactional(readOnly = true)

@@ -108,23 +108,32 @@ public class TradingDesk {
         } else {
             log.info("Fill {} of order {} is worth less than a cent; no money moves", fill.execId(), order.id());
         }
+        boolean ended = order.status().isFinal();
+        if (ended) {
+            holding.release(order.unsoldUnits());
+        }
         holdings.save(holding);
         orders.addFill(order.id(), fill);
         metrics.filled(order.side(), fill.amount());
-        if (order.status().isFinal()) {
-            ended(ledger, order, report.at());
+        if (ended) {
+            settle(ledger, order, report.at());
         }
     }
 
-    /** Trading is over: release unsold units, pay out what is left over or came in. */
+    /** Trading is over without a fill: release unsold units, pay out what is left over or came in. */
     private void ended(Books.Ledger ledger, Order order, Instant at) {
-        metrics.orderEnded(order);
         var unsold = order.unsoldUnits();
         if (unsold.isPositive()) {
             var holding = holdings.get(order.portfolioId(), order.isin());
             holding.release(unsold);
             holdings.save(holding);
         }
+        settle(ledger, order, at);
+    }
+
+    /** Pays out what is left over or came in once trading is over. */
+    private void settle(Books.Ledger ledger, Order order, Instant at) {
+        metrics.orderEnded(order);
         order.moneyToPayOut().ifPresentOrElse(
                 money -> desk.payOut(ledger.portfolio(), Payout.forOrder(order.portfolioId(), order.id(),
                         order.payoutReason(), money, at), at),

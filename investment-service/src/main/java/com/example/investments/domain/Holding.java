@@ -3,9 +3,11 @@ package com.example.investments.domain;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -22,6 +24,8 @@ public final class Holding {
     private final UUID portfolioId;
     private final String isin;
     private final List<Lot> lots;
+    /** The lots as they were stored, so only what changed is written back. */
+    private final Set<Lot> stored;
     private Quantity reserved;
     private Price lastPrice;
 
@@ -29,6 +33,7 @@ public final class Holding {
         this.portfolioId = Objects.requireNonNull(portfolioId, "portfolioId");
         this.isin = Objects.requireNonNull(isin, "isin");
         this.lots = new ArrayList<>(lots);
+        this.stored = new HashSet<>(lots);
         this.reserved = Objects.requireNonNull(reserved, "reserved");
         this.lastPrice = lastPrice;
         if (reserved.exceeds(quantity())) {
@@ -108,9 +113,9 @@ public final class Holding {
                 .setScale(Money.SCALE, RoundingMode.HALF_EVEN);
     }
 
-    /** All lots as they are now, including ones emptied by this change, for storage. */
-    public List<Lot> lots() {
-        return List.copyOf(lots);
+    /** Lots bought or sold from since this holding was restored, including emptied ones, for storage. */
+    public List<Lot> changedLots() {
+        return lots.stream().filter(lot -> !stored.contains(lot)).toList();
     }
 
     public UUID portfolioId() {

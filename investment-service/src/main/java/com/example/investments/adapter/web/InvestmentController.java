@@ -11,6 +11,7 @@ import com.example.investments.domain.Order;
 import com.example.investments.domain.Payout;
 import com.example.investments.domain.Price;
 import com.example.investments.domain.Quantity;
+import com.example.platform.messaging.WireValues;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Max;
@@ -43,9 +44,10 @@ import org.springframework.web.bind.annotation.RestController;
 class InvestmentController {
 
     static final String ORDER_ID = "ord-[0-9a-f-]{36}";
-    private static final String ISIN = "[A-Z]{2}[A-Z0-9]{9}[0-9]";
-    private static final String POSITIVE_AMOUNT = "(?!0+(\\.0{1,2})?$)\\d{1,17}(\\.\\d{1,2})?";
-    private static final String POSITIVE_QUANTITY = "(?!0+(\\.0{1,6})?$)\\d{1,18}(\\.\\d{1,6})?";
+    private static final String ISIN = Instrument.ISIN_FORMAT;
+    private static final String AMOUNT = "\\d{1," + WireValues.MAX_INTEGER_DIGITS + "}(\\.\\d{1," + Money.SCALE + "})?";
+    private static final String POSITIVE_AMOUNT = "(?!0+(\\.0{1," + Money.SCALE + "})?$)" + AMOUNT;
+    private static final String POSITIVE_QUANTITY = "(?!0+(\\.0{1," + Quantity.SCALE + "})?$)" + Quantity.FORMAT;
 
     record OpenRequest(@NotNull UUID customerId, @NotNull UUID referenceAccountId) {
     }

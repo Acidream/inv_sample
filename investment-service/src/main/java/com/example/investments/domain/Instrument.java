@@ -14,7 +14,8 @@ public record Instrument(String isin, String name, Type type, Instant offSaleFro
     public enum Type { ETF, STOCK }
 
     /** Two letters of country, nine alphanumerics, one check digit. */
-    public static final Pattern ISIN = Pattern.compile("[A-Z]{2}[A-Z0-9]{9}[0-9]");
+    public static final String ISIN_FORMAT = "[A-Z]{2}[A-Z0-9]{9}[0-9]";
+    public static final Pattern ISIN = Pattern.compile(ISIN_FORMAT);
 
     public Instrument {
         Objects.requireNonNull(isin, "isin");

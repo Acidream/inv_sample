@@ -42,11 +42,10 @@ class Books {
             return portfolio;
         }
 
-        CashEntry book(CashEntry.Booking booking) {
+        void book(CashEntry.Booking booking) {
             var entry = portfolio.book(booking);
             entries.add(entry);
             postings.publish(Posting.of(entry), entry.bookedAt());
-            return entry;
         }
 
         void save() {

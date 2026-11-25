@@ -29,9 +29,4 @@ public final class TradingCalendar {
     public static LocalDate businessDayOf(Instant at) {
         return at.atZone(ZONE).toLocalDate();
     }
-
-    /** The moment a trading day ends: midnight Berlin. */
-    public static Instant endOf(LocalDate tradingDay) {
-        return tradingDay.plusDays(1).atStartOfDay(ZONE).toInstant();
-    }
 }

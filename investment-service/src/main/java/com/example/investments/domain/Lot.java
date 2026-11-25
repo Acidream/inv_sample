@@ -52,8 +52,4 @@ public record Lot(Long id, String orderId, String execId, Quantity quantity, Qua
         return new Lot(id, orderId, execId, quantity, remaining.minus(units), remainingCost.subtract(costOf(units)),
                 acquiredAt);
     }
-
-    public boolean isEmpty() {
-        return remaining.isZero();
-    }
 }

@@ -213,9 +213,19 @@ public final class Order {
         tradingDay = Objects.requireNonNull(day, "day");
     }
 
-    /** True if the money that arrived under this order's funding transfer is what it waits for. */
-    public boolean awaitsFunding(Money amount) {
-        return status == Status.FUNDING && request.amount().equals(amount);
+    /**
+     * Money arrived under this order's funding transfer. The amount ordered places the order for the
+     * trading day; another amount fails it, since no second funding can come under the same id.
+     *
+     * @return true if the order was placed
+     */
+    public boolean fundingArrived(Money amount, LocalDate day) {
+        if (!request.amount().equals(amount)) {
+            fundingFailed(FUNDING_MISMATCH);
+            return false;
+        }
+        funded(day);
+        return true;
     }
 
     /** The current account refused the debit, or the transfer was invalid: nothing moved. */
@@ -284,7 +294,8 @@ public final class Order {
      */
     public Optional<Money> moneyToPayOut() {
         requireFinal("pay out");
-        if (status == Status.FUNDING_FAILED) {
+        if (request.side() == Side.BUY && tradingDay == null) {
+            // Never funded (its funding failed, or it was refused at once): no money came to give back.
             return Optional.empty();
         }
         var money = request.side() == Side.BUY ? request.amount().amount().subtract(filledAmount()) : filledAmount();

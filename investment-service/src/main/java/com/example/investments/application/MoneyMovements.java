@@ -9,7 +9,6 @@ import com.example.investments.application.port.Portfolios;
 import com.example.investments.application.port.ProcessedMessages;
 import com.example.investments.application.port.TransferAnswers;
 import com.example.investments.domain.CashEntry;
-import com.example.investments.domain.Money;
 import com.example.investments.domain.Order;
 import com.example.investments.domain.Payout;
 import com.example.investments.domain.Portfolio;
@@ -120,33 +119,25 @@ public class MoneyMovements {
                 .flatMap(orders::find)
                 .filter(found -> found.portfolioId().equals(portfolio.id()))
                 .filter(found -> found.status() == Order.Status.FUNDING);
-        var order = waiting.filter(found -> found.awaitsFunding(instruction.amount()));
+        boolean placed = waiting.map(order -> order.fundingArrived(instruction.amount(),
+                TradingCalendar.tradingDayOf(at))).orElse(false);
         ledger.book(CashEntry.Booking.funding(instruction.transferId(), instruction.amount(),
-                order.map(Order::id).orElse(null), at));
-        if (order.isPresent()) {
-            order.get().funded(TradingCalendar.tradingDayOf(at));
-            orders.update(order.get());
-            broker.place(order.get(), at);
+                placed ? waiting.get().id() : null, at));
+        waiting.ifPresent(orders::update);
+        if (placed) {
+            broker.place(waiting.get(), at);
         } else {
             log.warn("Transfer {} brought {} to portfolio {} without an order waiting for it; paying it back",
                     instruction.transferId(), instruction.amount(), portfolio.id());
-            waiting.ifPresent(mismatched -> fundingDidNotMatch(mismatched, instruction.amount()));
+            waiting.ifPresent(failed -> {
+                log.warn("Order {} failed: its funding brought {} instead of {}", failed.id(), instruction.amount(),
+                        failed.request().amount());
+                metrics.orderEnded(failed);
+            });
             desk.payOut(portfolio, Payout.unexpectedDeposit(portfolio.id(), instruction.transferId(),
                     instruction.amount(), at), at);
         }
         answer(instruction.carriedOut(instruction.amount()));
-    }
-
-    /**
-     * The order's funding transfer brought another amount than the order asked for. That money goes
-     * back on its own; the order can't wait for a second funding under the same transfer id, so it ends.
-     */
-    private void fundingDidNotMatch(Order order, Money amount) {
-        log.warn("Order {} failed: its funding brought {} instead of {}", order.id(), amount,
-                order.request().amount());
-        order.fundingFailed(Order.FUNDING_MISMATCH);
-        orders.update(order);
-        metrics.orderEnded(order);
     }
 
     /** Money leaves only for a payout investments requested, under that payout's current transfer id. */
@@ -235,7 +226,7 @@ public class MoneyMovements {
             return;
         }
         var payout = locked.get();
-        if (payout.status() != Payout.Status.REQUESTED || !payout.transferId().equals(outcome.transferId())) {
+        if (payout.status() != Payout.Status.REQUESTED) {
             log.warn("Outcome of payout transfer {} arrived, but payout {} is {}; ignored", outcome.transferId(),
                     payout.id(), payout.status());
             return;
@@ -257,7 +248,7 @@ public class MoneyMovements {
             metrics.duplicateMessage();
             return;
         }
-        for (var payoutId : payouts.unpaidIds(accountId, Integer.MAX_VALUE)) {
+        for (var payoutId : payouts.unpaidIdsTo(accountId)) {
             retry(payoutId, at);
         }
     }
@@ -265,7 +256,7 @@ public class MoneyMovements {
     /** The daily retry. @return how many payouts were tried again */
     @Transactional
     public int retryUnpaid(Instant at, int limit) {
-        List<UUID> ids = payouts.unpaidIds(null, limit);
+        List<UUID> ids = payouts.oldestUnpaidIds(limit);
         ids.forEach(id -> retry(id, at));
         return ids.size();
     }

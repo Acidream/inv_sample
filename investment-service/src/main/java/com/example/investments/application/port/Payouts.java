@@ -19,8 +19,11 @@ public interface Payouts {
 
     List<Payout> unpaid(UUID portfolioId);
 
-    /** Ids of unpaid payouts, oldest first; of one reference account if given. */
-    List<UUID> unpaidIds(UUID referenceAccountId, int limit);
+    /** Ids of the unpaid payouts to one reference account, oldest first. */
+    List<UUID> unpaidIdsTo(UUID referenceAccountId);
+
+    /** Ids of the oldest unpaid payouts, at most {@code limit}. */
+    List<UUID> oldestUnpaidIds(int limit);
 
     /** Unpaid since before the given time (ADR 0026's alert). */
     long countUnpaidSince(Instant before);

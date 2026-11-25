@@ -43,7 +43,7 @@ final class WireFormat {
     static final int MAX_MESSAGE_ID_LENGTH = 180;
     static final int MAX_REASON_LENGTH = 300;
     /** {@code numeric(24, 6)} and {@code numeric(19, 4)}. */
-    private static final Pattern QUANTITY = Pattern.compile("\\d{1,18}(\\.\\d{1,6})?");
+    private static final Pattern QUANTITY = Pattern.compile(Quantity.FORMAT);
     private static final Pattern PRICE = Pattern.compile("\\d{1,15}(\\.\\d{1,4})?");
 
     private WireFormat() {

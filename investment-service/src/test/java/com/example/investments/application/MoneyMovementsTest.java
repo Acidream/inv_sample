@@ -171,7 +171,7 @@ class MoneyMovementsTest {
         var payout = Payout.forOrder(portfolio.id(), "ord-s", Payout.Reason.PROCEEDS, Money.of("90.00"), AT);
         var firstAttempt = payout.transferId();
         payout.unpaid(AT);
-        when(payouts.unpaidIds(portfolio.referenceAccountId(), Integer.MAX_VALUE)).thenReturn(List.of(payout.id()));
+        when(payouts.unpaidIdsTo(portfolio.referenceAccountId())).thenReturn(List.of(payout.id()));
         when(payouts.find(payout.id())).thenReturn(Optional.of(payout));
         when(orders.find("ord-s")).thenReturn(Optional.empty());
 

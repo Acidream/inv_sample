@@ -104,10 +104,6 @@ public record CashEntry(UUID portfolioId, long entryNo, Type type, BigDecimal am
         }
     }
 
-    public Optional<String> order() {
-        return Optional.ofNullable(orderId);
-    }
-
     public Optional<Trade> tradeDetails() {
         return Optional.ofNullable(trade);
     }

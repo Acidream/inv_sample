@@ -81,14 +81,21 @@ class JdbcPayouts implements Payouts {
     }
 
     @Override
-    public List<UUID> unpaidIds(UUID referenceAccountId, int limit) {
+    public List<UUID> unpaidIdsTo(UUID referenceAccountId) {
         return jdbc.sql("""
                 select p.payout_id from payout p join portfolio f on f.portfolio_id = p.portfolio_id
-                where p.status = 'UNPAID'
-                    and (cast(:account as uuid) is null or f.reference_account_id = :account)
-                order by p.unpaid_since, p.payout_id
-                limit :limit""")
+                where p.status = 'UNPAID' and f.reference_account_id = :account
+                order by p.unpaid_since, p.payout_id""")
                 .param("account", referenceAccountId)
+                .query(UUID.class).list();
+    }
+
+    @Override
+    public List<UUID> oldestUnpaidIds(int limit) {
+        return jdbc.sql("""
+                select payout_id from payout where status = 'UNPAID'
+                order by unpaid_since, payout_id
+                limit :limit""")
                 .param("limit", limit)
                 .query(UUID.class).list();
     }

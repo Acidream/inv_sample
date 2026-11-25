@@ -11,6 +11,10 @@ import java.util.Objects;
 public record Quantity(BigDecimal value) implements Comparable<Quantity> {
 
     public static final int SCALE = 6;
+    /** {@code numeric(24, 6)}: 18 digits before the point. */
+    public static final int MAX_INTEGER_DIGITS = 18;
+    /** A quantity written out, e.g. {@code 1.5}. */
+    public static final String FORMAT = "\\d{1," + MAX_INTEGER_DIGITS + "}(\\.\\d{1," + SCALE + "})?";
     public static final Quantity ZERO = new Quantity(BigDecimal.ZERO);
 
     public Quantity {

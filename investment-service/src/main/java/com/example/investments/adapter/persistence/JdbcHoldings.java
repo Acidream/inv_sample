@@ -9,7 +9,9 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
@@ -49,7 +51,7 @@ class JdbcHoldings implements Holdings {
                 .param("reserved", holding.reserved().value())
                 .param("price", holding.lastPrice().map(Price::value).orElse(null))
                 .update();
-        for (var lot : holding.lots()) {
+        for (var lot : holding.changedLots()) {
             if (lot.id() == null) {
                 jdbc.sql("""
                         insert into lot (portfolio_id, isin, order_id, exec_id, quantity, remaining_quantity,
@@ -74,13 +76,20 @@ class JdbcHoldings implements Holdings {
         }
     }
 
+    /** Holdings with units left; reserved units are never more than those, so that is all of them. */
     @Override
     public List<Holding> of(UUID portfolioId) {
+        var lots = jdbc.sql("""
+                select * from lot where portfolio_id = :portfolio and remaining_quantity > 0 order by isin, id""")
+                .param("portfolio", portfolioId)
+                .query((row, n) -> Map.entry(row.getString("isin"), mapLot(row, n))).list().stream()
+                .collect(Collectors.groupingBy(Map.Entry::getKey,
+                        Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
         return jdbc.sql("select * from holding where portfolio_id = :portfolio order by isin")
                 .param("portfolio", portfolioId)
                 .query(JdbcHoldings::mapRow).list().stream()
-                .map(this::withLots)
-                .filter(holding -> holding.quantity().isPositive() || holding.reserved().isPositive())
+                .filter(row -> lots.containsKey(row.isin()))
+                .map(row -> restore(row, lots.get(row.isin())))
                 .toList();
     }
 
@@ -90,6 +99,10 @@ class JdbcHoldings implements Holdings {
                 order by id""")
                 .param("portfolio", row.portfolioId()).param("isin", row.isin())
                 .query(JdbcHoldings::mapLot).list();
+        return restore(row, lots);
+    }
+
+    private static Holding restore(Row row, List<Lot> lots) {
         return Holding.restore(row.portfolioId(), row.isin(), lots, row.reserved(), row.lastPrice());
     }
 
