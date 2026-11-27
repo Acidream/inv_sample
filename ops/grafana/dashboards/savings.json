@@ -32,14 +32,14 @@
       "type": "stat", "title": "Deposited (EUR, 24h)",
       "gridPos": { "x": 0, "y": 9, "w": 8, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "unit": "currencyEUR" } },
+      "fieldConfig": { "defaults": { "unit": "currencyEUR", "color": { "mode": "fixed", "fixedColor": "blue" } } },
       "targets": [{ "refId": "A", "expr": "sum(increase(savings_deposits_amount_euros_total[24h])) or vector(0)" }]
     },
     {
       "type": "stat", "title": "Interest paid (EUR, 31d)",
       "gridPos": { "x": 8, "y": 9, "w": 8, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "unit": "currencyEUR" } },
+      "fieldConfig": { "defaults": { "unit": "currencyEUR", "color": { "mode": "fixed", "fixedColor": "blue" } } },
       "targets": [{ "refId": "A", "expr": "sum(increase(savings_interest_paid_euros_total[31d])) or vector(0)" }]
     },
     {
